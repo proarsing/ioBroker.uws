@@ -1,57 +1,35 @@
 {
-  "_from": "https://github.com/DMXface/ioBroker.dmxface/tarball/d47cdd80c4ab48f70b9cb99e82aa34ceecf04d7d",
-  "_id": "iobroker.dmxface@1.1.0",
-  "_inBundle": false,
-  "_integrity": "sha512-c4coBTghxRDYWct1OgOvmJALR0L/z0SHwfbODgA5yFp1EwgYelJHs9Wi2OGu7OygoPqujYCnS7v7vpPSck5jLw==",
-  "_location": "/iobroker.dmxface",
-  "_phantomChildren": {
-    "@types/node": "14.14.6"
-  },
-  "_requested": {
-    "type": "remote",
-    "raw": "https://github.com/DMXface/ioBroker.dmxface/tarball/d47cdd80c4ab48f70b9cb99e82aa34ceecf04d7d",
-    "rawSpec": "https://github.com/DMXface/ioBroker.dmxface/tarball/d47cdd80c4ab48f70b9cb99e82aa34ceecf04d7d",
-    "saveSpec": "https://github.com/DMXface/ioBroker.dmxface/tarball/d47cdd80c4ab48f70b9cb99e82aa34ceecf04d7d",
-    "fetchSpec": "https://github.com/DMXface/ioBroker.dmxface/tarball/d47cdd80c4ab48f70b9cb99e82aa34ceecf04d7d"
-  },
-  "_requiredBy": [
-    "#USER",
-    "/"
-  ],
-  "_resolved": "https://github.com/DMXface/ioBroker.dmxface/tarball/d47cdd80c4ab48f70b9cb99e82aa34ceecf04d7d",
-  "_shasum": "d7e39565295c610cc57c5c8b84f8ce7de96b68ac",
-  "_spec": "https://github.com/DMXface/ioBroker.dmxface/tarball/d47cdd80c4ab48f70b9cb99e82aa34ceecf04d7d",
-  "_where": "/opt/iobroker",
+  "name": "iobroker.opcua-client",
+  "description": "OPC UA client adapter for ioBroker",
   "author": {
-    "name": "Hufnagl Oliver",
-    "email": "mail@dmxface.at"
+    "name": "Vladislav Arsic",
+    "email": "vladislav.arsic@hotmail.com"
   },
+  "homepage": "http://192.168.1.213:varsic79/ioBroker.opcua-client",
   "bugs": {
-    "url": "https://github.com/DMXface/ioBroker.dmxface/issues"
+    "url": "http://192.168.1.213:varsic79/ioBroker.opcua-client/issues"
   },
+  "deprecated": false,
+  "keywords": [
+    "ioBroker",
+    "OPC UA",
+    "Industry4.0",
+    "Industrial Automation",
+    "Home Home Automation"
+  ],
+  "license": "MIT",
+  "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "http://192.168.1.213:varsic79/ioBroker.opcua-client.git"
+  },
+  "_where": "/opt/iobroker",
   "bundleDependencies": false,
   "dependencies": {
     "@iobroker/adapter-core": "^1.0.3"
   },
-  "deprecated": false,
-  "description": "DMXfaceXP adapter for ioBroker",
   "devDependencies": {},
-  "homepage": "https://github.com/DMXface/ioBroker.dmxface",
-  "keywords": [
-    "ioBroker",
-    "dmxface",
-    "DMXfaceXP",
-    "Media controller",
-    "Smart Home",
-    "home automation"
-  ],
-  "license": "MIT",
-  "main": "main.js",
-  "name": "iobroker.dmxface",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/DMXface/ioBroker.dmxface.git"
-  },
   "scripts": {},
-  "version": "1.1.0"
+  "version": "0.0.1",
+  "readmeFilename": "README.md"
 }

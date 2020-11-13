@@ -1,22 +1,20 @@
 'use strict';
-//DMXfaceXP Adapter for ioBroker
-//REV 1.1.0
-//Update to the last version of the ACTIVE SEND Protokoll 5.16
-//Implements Power measurement with IN, OUT, BUS and DMX Ports
-//Implements min max tracking of addition reads
+//OPC UA client Adapter for ioBroker
+//REV 0.0.1
+//Update to the last version
 
-//REV 1.0.2 First release
-const adaptername = "dmxface"
+//REV 0.0.1 First release
+const adaptername = "opcua-client"
 
 const utils = require('@iobroker/adapter-core');
 var adapter  = utils.Adapter (adaptername);
 
-var LOG_ALL = false;						//Flag to activate full logging
+var LOG_ALL = true;						//Flag to activate full logging
 
 //DMXFACE CONNECTION values
-var IPADR  = "0.0.0.0";						//DMXface IP address
-var PORT = 0;								//DMXface port of TCP server ACIVE SEND socket (Configured @ DMXface Setup)
-var TIMING = 1000;							//Request timing for addtional added ports and analog inputs
+var IPADR  = "0.0.0.0";						//OPC UA Server IP address
+var PORT = 48010;								// OPC UA Server port 
+var TIMING = 500;							//Request timing for addtional added ports and analog inputs
 var DMX_CHANNELS_USED = 0;					//DMXchannels in use by ioBroker to prevent getting objects for all 244 channels
 
 //To receive analog values of INports, BUSinports and DMXchannels (optional as converted value by tables stored in DMXface) 
