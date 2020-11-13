@@ -1,0 +1,69 @@
+{
+  "common": {
+    "name": "dmxface",
+    "version": "1.1.0",
+    "news": {
+      "1.1.0": {
+        "en": "ioBroker adapter for DMXfaceXP controllers",
+        "de": "ioBroker Adapter für DMXfaceXP Controller"
+      }
+    },
+    "title": "DMXfaceXP",
+    "titleLang": {
+      "en": "DMXfaceXP ioBroker adapter",
+      "de": "DMXfaceXP ioBroker Adapter"
+    },
+    "desc": {
+      "en": "Connects DMXfaceXP by ACTIVE SEND protocoll",
+      "de": "Verbindet das DMXfaceXP über das ACTICE SEND Protokoll"
+    },
+    "authors": [
+      "Author <mail@dmxface.at>"
+    ],
+    "keywords": [
+      "ioBroker",
+      "dmxface",
+      "DMXfaceXP",
+      "Media controller",
+      "Smart Home",
+      "home automation"
+    ],
+    "license": "MIT",
+    "platform": "Javascript/Node.js",
+    "main": "main.js",
+    "icon": "dmxface.png",
+    "enabled": true,
+    "extIcon": "https://raw.githubusercontent.com/DMXface/ioBroker.dmxface/master/admin/dmxface.png",
+    "readme": "https://github.com/DMXface/ioBroker.dmxface/blob/master/README.md",
+    "loglevel": "info",
+    "mode": "daemon",
+    "type": "general",
+    "compact": true,
+    "materialize": true,
+    "materializeTab": true,
+    "adminTab": {
+      "singleton": true,
+      "name": {
+        "en": "DMXfaceXP",
+        "de": "DMXfaceXP"
+      },
+      "link": "www.dmxface.at",
+      "fa-icon": "info"
+    },
+    "supportCustoms": true,
+    "dependencies": [
+      {
+        "js-controller": ">=1.4.2"
+      }
+    ],
+    "installedFrom": "https://github.com/DMXface/ioBroker.dmxface/tarball/d47cdd80c4ab48f70b9cb99e82aa34ceecf04d7d"
+  },
+  "native": {
+    "ipaddress": "0.0.0.0",
+    "port": "6000",
+    "requesttiming": "1000",
+    "lastdmxchannel": "0"
+  },
+  "objects": [],
+  "instanceObjects": []
+}
