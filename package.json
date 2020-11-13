@@ -5,9 +5,9 @@
     "name": "Vladislav Arsic",
     "email": "vladislav.arsic@hotmail.com"
   },
-  "homepage": "http://192.168.1.213:varsic79/ioBroker.opcua-client",
+  "homepage": "http://192.168.1.213/varsic79/ioBroker.opcua-client",
   "bugs": {
-    "url": "http://192.168.1.213:varsic79/ioBroker.opcua-client/issues"
+    "url": "http://192.168.1.213/varsic79/ioBroker.opcua-client/issues"
   },
   "deprecated": false,
   "keywords": [
@@ -21,7 +21,7 @@
   "main": "main.js",
   "repository": {
     "type": "git",
-    "url": "http://192.168.1.213:varsic79/ioBroker.opcua-client.git"
+    "url": "git+http://192.168.1.213:varsic79/ioBroker.opcua-client.git"
   },
   "_where": "/opt/iobroker",
   "bundleDependencies": false,

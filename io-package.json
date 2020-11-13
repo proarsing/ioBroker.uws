@@ -32,8 +32,8 @@
     "main": "main.js",
     "icon": "opcua.png",
     "enabled": true,
-    "extIcon": "http://192.168.1.213:varsic79/ioBroker.opcua-client/master/admin/opcua.png",
-    "readme": "http://192.168.1.213:varsic79/ioBroker.opcua-client/master/README.md",
+    "extIcon": "http://192.168.1.213/varsic79/ioBroker.opcua-client/master/admin/opcua.png",
+    "readme": "http://192.168.1.213/varsic79/ioBroker.opcua-client/master/README.md",
     "loglevel": "info",
     "mode": "daemon",
     "type": "general",
@@ -55,7 +55,7 @@
         "js-controller": ">=1.4.2"
       }
     ],
-    "installedFrom": "http://192.168.1.213:varsic79/ioBroker.opcua-client/master/ab852a955a80"
+    "installedFrom": "http://192.168.1.213/varsic79/ioBroker.opcua-client/master/ab852a955a80"
   },
   "native": {
     "ipaddress": "0.0.0.0",
