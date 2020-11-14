@@ -4,206 +4,223 @@
 //Update to the last version
 
 //REV 0.0.1 First release
-const adaptername = "opcua-client"
-
 const utils = require('@iobroker/adapter-core');
-const adapter = utils.Adapter(adaptername);
 
-const LOG_ALL = false;						// Flag to activate full logging
+var LOG_ALL = false;						// Flag to activate full logging
 
 //OPC UA CONNECTION values
-const IPADR  = "0.0.0.0";				// OPC UA Server IP address
-const PORT = 48010;							// OPC UA Server port
-const TIMING = 1000;            // Sampling interval
+var IPADR  = "0.0.0.0";				// OPC UA Server IP address
+var PORT = 48010;							// OPC UA Server port
+var TIMING = 1000;            // Sampling interval
 
 
 // OPC UA configuration
 const nodeidConfig = require('./lib/opcconfig');
 
+let adapter;
+
 var APPLICATIONstopp = false;		//FLAG that shows that a reconnect process is runnig, after an error has occured.
 
-//FLAG, true when connection established and free of error
+// FLAG, true when connection established and free of error
 const IS_ONLINE  = false;
 
-//*************************************  ADAPTER STARTS with ioBroker *******************************************
-adapter.on ('ready', function () {
-  // Move the ioBroker Adapter configuration to the container values 
-  IPADR = adapter.config.ipaddress;
-  PORT = adapter.config.port;
-  TIMING = adapter.config.samplinginterval; 
-  //EX_REQUEST_LIST = adapter.config.addchannels;
-  LOG_ALL = adapter.config.extlogging;
+function startAdapter(options) {
+  const optionSave = options || {};
 
-  // LIMIT the request timimng	
-  if (TIMING <100) {
-    TIMING = 100;
-  }
+  Object.assign(optionSave, { name: "opcua-client" });
+  adapter = new utils.Adapter(optionSave);
   
-  adapter.log.info ("OPC UA Server " + IPADR + " Port:" + PORT);
+  // When Adapter is ready then connecting to OPC UA Server and Subscribe necessary Handles
 
-  //Initialize ioBrokers state objects if they dont exist
-  for (let i=1 ; i <= nodeidConfig.nodeidList.length; i++) {
-    adapter.setObjectNotExists (nodeidConfig.nodeidList(i), {
-      type:'state',
-      common:{
-        name:'OPC UA channel' + i,
-        type:'number',
-        role:'value',
-        read:true,
-        write:true
-      },
-      native:{}
-    });
-  }
+  //*************************************  ADAPTER STARTS with ioBroker *******************************************
+  adapter.on ('ready', () => {
+    // Move the ioBroker Adapter configuration to the container values 
+    IPADR = adapter.config.ipaddress;
+    PORT = adapter.config.port;
+    TIMING = adapter.config.samplinginterval; 
+    //EX_REQUEST_LIST = adapter.config.addchannels;
+    LOG_ALL = adapter.config.extlogging;
 
-/*
-//User specific requests of addtional port values, create one object for each value
-  for (i=0; i < EX_REQUEST_NAMES.length; i++){
-    adapter.setObjectNotExists (EX_REQUEST_NAMES[i],{
-      type:'state',
-      common:{name: EX_REQUEST_NAMES[i],type:'number',role:'value',read:true,write:false},
-      native:{}
-    });	
-    if (EX_MINMAX_TRACKING) {
-      adapter.setObjectNotExists (EX_REQUEST_NAMES[i]+"_min",{
-        type:'state',
-        common:{name: EX_REQUEST_NAMES[i]+"_min",type:'number',role:'value',read:true,write:true},
-        native:{}
-      });	
-      adapter.setObjectNotExists (EX_REQUEST_NAMES[i]+"_max",{
-        type:'state',
-        common:{name: EX_REQUEST_NAMES[i]+"_max",type:'number',role:'value',read:true,write:true},
-        native:{}
-      });	
-      adapter.setObjectNotExists (EX_REQUEST_NAMES[i]+"_reset",{
-        type:'state',
-        common:{name: EX_REQUEST_NAMES[i]+"_reset",type:'boolean',role:'value',read:true,write:true},
-        native:{}
-      });	
+    // LIMIT the request timimng	
+    if (TIMING <100) {
+      TIMING = 100;
     }
-  }
-  
-//POWER Reading Values 	
-for (i=0; i < PW_REQUEST_OUTPUT.length; i++){
-    //RUNTIME OBJECT hours
-    adapter.setObjectNotExists (PW_REQUEST_RUNTIME[i],{
-      type:'state',
-      common:{name: PW_REQUEST_RUNTIME[i],type:'number',role:'value',read:true,write:true},
-      native:{}
-    });
-    //Consumtion value only if load is forwarded
-    if (PW_REQUEST_KW[i] >0)
-    {
-      adapter.setObjectNotExists (PW_REQUEST_OUTPUT[i],{
+    
+    adapter.log.info ("OPC UA Server " + IPADR + " Port:" + PORT);
+
+    //Initialize ioBrokers state objects if they dont exist
+    adapter.log.info('nodeidConfig.nodeidList.length is : ' + nodeidConfig.nodeidList.length);
+    for ( let i=0 ; i < nodeidConfig.nodeidList.length; i++ ) {
+      adapter.log.info(nodeidConfig.nodeidList[i]);
+      adapter.setObjectNotExists ('some_folder.' + nodeidConfig.nodeidList[i], {
         type:'state',
-        common:{name: PW_REQUEST_OUTPUT[i],type:'number',role:'value',read:true,write:true},
+        common:{
+          name:'OPC UA channel ' + i,
+          type:'number',
+          role:'value',
+          read:true,
+          write:true
+        },
         native:{}
       });
     }
-  }
-*/
-  //Enable receiving of change events for all objects
-  adapter.subscribeStates('*');
 
-  // Connect the DMXface server (function below)
-  /*CONNECT_CLIENT();*/
-
-});
-
-//************************************* ADAPTER CLOSED BY ioBroker *****************************************
-adapter.on ('unload', function (callback) {
-  APPLICATIONstopp = true
-  //IS_ONLINE = false;
-  //clearInterval (OBJID_REQUEST);
-  adapter.log.info ('DMXface: Close connection, cancel service');
-  //client.close;
-  if ( typeof(callback) === 'function' ) {
-    callback();
-  };
-});
-
-
-//************************************* Adapter STATE has CHANGED ******************************************	
-adapter.on ('stateChange',function (id,obj){
-  adapter.log.info( id + "  /  " + obj );
-/*
-  if (!IS_ONLINE){return;}							//DMXface Offline	
-  if (obj==null) {
-    adapter.log.info ('Object: '+ id + ' terminated by user');
-    return;
-  }
-    
-  if (obj.from.search (adaptername) != -1) {return;}    // do not process self generated state changes (by dmxface instance) 
-                              //exit if sender = dmxface
-  var PORTSTRING = id.substring(adaptername.length+3);  				//remove Instance name
-  // if (PORTSTRING[0] ='.'){PORTSTRING = id.substring(adaptername.length+4)};  optional removal if more than 10 Instances are used 
-  //Statistic value´s are not processed
-  if (PORTSTRING.search ('STAT_') > -1) {return;}
-  //Reset of min max 
-  if (PORTSTRING.search ('_reset') >-1)
-  {
-    var STATEname = PORTSTRING.replace ("_reset","");
-    adapter.getState(STATEname , function (err, state) {	//get current value
-      var newVAL =0;
-      if (state !=null) {							//EXIT if state is not initialized yet
-        if (state.val !=null) {					//Exit if value not initialized
-          newVAL= state.val;
-        }
+  /*
+  //User specific requests of addtional port values, create one object for each value
+    for (i=0; i < EX_REQUEST_NAMES.length; i++){
+      adapter.setObjectNotExists (EX_REQUEST_NAMES[i],{
+        type:'state',
+        common:{name: EX_REQUEST_NAMES[i],type:'number',role:'value',read:true,write:false},
+        native:{}
+      });	
+      if (EX_MINMAX_TRACKING) {
+        adapter.setObjectNotExists (EX_REQUEST_NAMES[i]+"_min",{
+          type:'state',
+          common:{name: EX_REQUEST_NAMES[i]+"_min",type:'number',role:'value',read:true,write:true},
+          native:{}
+        });	
+        adapter.setObjectNotExists (EX_REQUEST_NAMES[i]+"_max",{
+          type:'state',
+          common:{name: EX_REQUEST_NAMES[i]+"_max",type:'number',role:'value',read:true,write:true},
+          native:{}
+        });	
+        adapter.setObjectNotExists (EX_REQUEST_NAMES[i]+"_reset",{
+          type:'state',
+          common:{name: EX_REQUEST_NAMES[i]+"_reset",type:'boolean',role:'value',read:true,write:true},
+          native:{}
+        });	
       }
-      adapter.setState(STATEname+'_min',newVAL,true);
-      adapter.setState(STATEname+'_max',newVAL,true);
-      adapter.setState(STATEname+'_reset',false,true);
-      adapter.log.info ('Reset MIN / MAX of: ' + STATEname);
-    });
-    return;	
-  }
-
-  //Select the object type by the first character of the object name
-  //'O' OUTPORT , 'D' DMX, 'B' BUSINPORT, INPORT and IR_RECEIVE cannot be set 
-  var PORTNUMBER =-1
-  var WDATA 
-  switch (PORTSTRING[0]) {
-    case 'O':		//OUTPORT
-      var PORTNUMBER = parseInt(PORTSTRING.substring(7));
-      WDATA= Buffer.from ([0xF0,0x4F,(PORTNUMBER & 0xFF),0]);  // DMXFACE ACTIVE SEND Command switch Portnumber to OFF
-      if (obj.val ==true) {WDATA[3] = 1;}						// IF TRUE then ON 
-      client.write (WDATA); 
-      break;
-//REV 1.1 Upgrade auf 544 channels			
-    case 'D':		//DMX CHANNEL
-      var PORTNUMBER = parseInt(PORTSTRING.substring(3));
-      WDATA= Buffer.from ([0xF0,0x44,((PORTNUMBER >> 8)&0xFF),(PORTNUMBER &0xFF),obj.val]);  // DMXFACE ACTIVE SEND Command SET DMX CHANNEL
-      client.write (WDATA); 
-      break;
-    case 'B':	 	//BUS IO 
-      var PORTNUMBER = parseInt(PORTSTRING.substring(3));
-      PORTNUMBER+=24;
-      WDATA= Buffer.from ([0xF0,0x4F,(PORTNUMBER & 0xFF),0]);  // DMXFACE ACTIVE SEND BUS IO
-      if (obj.val ==true) {WDATA[3] = 1;}						// IF TRUE then ON 
-      client.write (WDATA); 
-      break;
-    case 'S':  		//SCENE CALLED by the change of the object value 
-      var SCENE_NUMBER = obj.val;
-      if (SCENE_NUMBER < 1){return;}
-      if (SCENE_NUMBER > 180){return;}
-      WDATA= Buffer.from ([0xF0,0x53,SCENE_NUMBER]);  // DMXFACE ACTIVE SEND BUS IO
-      client.write (WDATA); 
-      break;
+    }
     
-    case 'P':  		//PROGRAM CALLED by the change of the object value   
-      var PG_NUMBER = obj.val;
-      if (PG_NUMBER < 1){return;}
-      if (PG_NUMBER > 28){return;}
-      WDATA= Buffer.from ([0xF0,0x50,PG_NUMBER]);  // DMXFACE ACTIVE SEND BUS IO
-      client.write (WDATA); 
-      break;
-    default:
-      return;
-      break;
-  }
-*/
-});
+  //POWER Reading Values 	
+  for (i=0; i < PW_REQUEST_OUTPUT.length; i++){
+      //RUNTIME OBJECT hours
+      adapter.setObjectNotExists (PW_REQUEST_RUNTIME[i],{
+        type:'state',
+        common:{name: PW_REQUEST_RUNTIME[i],type:'number',role:'value',read:true,write:true},
+        native:{}
+      });
+      //Consumtion value only if load is forwarded
+      if (PW_REQUEST_KW[i] >0)
+      {
+        adapter.setObjectNotExists (PW_REQUEST_OUTPUT[i],{
+          type:'state',
+          common:{name: PW_REQUEST_OUTPUT[i],type:'number',role:'value',read:true,write:true},
+          native:{}
+        });
+      }
+    }
+  */
 
+    //Enable receiving of change events for all objects
+    adapter.subscribeStates('*');
+
+    // Connect the DMXface server (function below)
+    /*CONNECT_CLIENT();*/
+
+  });
+
+  //************************************* ADAPTER CLOSED BY ioBroker *****************************************
+  adapter.on ('unload', (callback) => {
+    APPLICATIONstopp = true
+    IS_ONLINE = false;
+    //clearInterval (OBJID_REQUEST);
+    adapter.log.info ('OPC Client: Close connection, cancel service');
+    //client.close;
+
+    if ( typeof(callback) === 'function' ) {
+      callback();
+    }
+  });
+
+
+  //************************************* Adapter STATE has CHANGED ******************************************	
+  adapter.on ('stateChange', (id, state) => {
+    if (!state) {
+      return ;
+    }
+
+    adapter.log.info( id + "  /  " + state );
+  /*
+    if (!IS_ONLINE){return;}							//DMXface Offline	
+    if (obj==null) {
+      adapter.log.info ('Object: '+ id + ' terminated by user');
+      return;
+    }
+      
+    if (obj.from.search (adaptername) != -1) {return;}    // do not process self generated state changes (by dmxface instance) 
+                                //exit if sender = dmxface
+    var PORTSTRING = id.substring(adaptername.length+3);  				//remove Instance name
+    // if (PORTSTRING[0] ='.'){PORTSTRING = id.substring(adaptername.length+4)};  optional removal if more than 10 Instances are used 
+    //Statistic value´s are not processed
+    if (PORTSTRING.search ('STAT_') > -1) {return;}
+    //Reset of min max 
+    if (PORTSTRING.search ('_reset') >-1)
+    {
+      var STATEname = PORTSTRING.replace ("_reset","");
+      adapter.getState(STATEname , function (err, state) {	//get current value
+        var newVAL =0;
+        if (state !=null) {							//EXIT if state is not initialized yet
+          if (state.val !=null) {					//Exit if value not initialized
+            newVAL= state.val;
+          }
+        }
+        adapter.setState(STATEname+'_min',newVAL,true);
+        adapter.setState(STATEname+'_max',newVAL,true);
+        adapter.setState(STATEname+'_reset',false,true);
+        adapter.log.info ('Reset MIN / MAX of: ' + STATEname);
+      });
+      return;	
+    }
+
+    //Select the object type by the first character of the object name
+    //'O' OUTPORT , 'D' DMX, 'B' BUSINPORT, INPORT and IR_RECEIVE cannot be set 
+    var PORTNUMBER =-1
+    var WDATA 
+    switch (PORTSTRING[0]) {
+      case 'O':		//OUTPORT
+        var PORTNUMBER = parseInt(PORTSTRING.substring(7));
+        WDATA= Buffer.from ([0xF0,0x4F,(PORTNUMBER & 0xFF),0]);  // DMXFACE ACTIVE SEND Command switch Portnumber to OFF
+        if (obj.val ==true) {WDATA[3] = 1;}						// IF TRUE then ON 
+        client.write (WDATA); 
+        break;
+  //REV 1.1 Upgrade auf 544 channels			
+      case 'D':		//DMX CHANNEL
+        var PORTNUMBER = parseInt(PORTSTRING.substring(3));
+        WDATA= Buffer.from ([0xF0,0x44,((PORTNUMBER >> 8)&0xFF),(PORTNUMBER &0xFF),obj.val]);  // DMXFACE ACTIVE SEND Command SET DMX CHANNEL
+        client.write (WDATA); 
+        break;
+      case 'B':	 	//BUS IO 
+        var PORTNUMBER = parseInt(PORTSTRING.substring(3));
+        PORTNUMBER+=24;
+        WDATA= Buffer.from ([0xF0,0x4F,(PORTNUMBER & 0xFF),0]);  // DMXFACE ACTIVE SEND BUS IO
+        if (obj.val ==true) {WDATA[3] = 1;}						// IF TRUE then ON 
+        client.write (WDATA); 
+        break;
+      case 'S':  		//SCENE CALLED by the change of the object value 
+        var SCENE_NUMBER = obj.val;
+        if (SCENE_NUMBER < 1){return;}
+        if (SCENE_NUMBER > 180){return;}
+        WDATA= Buffer.from ([0xF0,0x53,SCENE_NUMBER]);  // DMXFACE ACTIVE SEND BUS IO
+        client.write (WDATA); 
+        break;
+      
+      case 'P':  		//PROGRAM CALLED by the change of the object value   
+        var PG_NUMBER = obj.val;
+        if (PG_NUMBER < 1){return;}
+        if (PG_NUMBER > 28){return;}
+        WDATA= Buffer.from ([0xF0,0x50,PG_NUMBER]);  // DMXFACE ACTIVE SEND BUS IO
+        client.write (WDATA); 
+        break;
+      default:
+        return;
+        break;
+    }
+  */
+  });
+
+  return adapter;
+}
 
 //************************************* TCP CONNECT /ERROR / CLOSED ****************************************
 function CONNECT_CLIENT () {
@@ -234,48 +251,6 @@ function CBclientCLOSED() {
     
 }
 
-
-//************************************* TIMDED TASK requests additional ports and implements power measurement ****************
-function CLIENT_REQUEST	(){
-  if (IS_ONLINE == true) {
-    if (EX_PTR >= EX_REQUEST_NAMES.length){EX_PTR =0;}   //RESET the POINTER if > array.length
-    if (LOG_ALL) {adapter.log.info ("Request:" +EX_REQUEST_NAMES[EX_PTR])}
-    var WDATA; 				//TX Buffer
-    switch (EX_REQUEST_PORTS[EX_PTR]) {		//Position contains 'I' / 'B' / 'D' Inport , Bus, DMX
-      
-      case 'I':		//INPORT 1-24, create Request Command
-        WDATA= Buffer.from ([0xF0,0x49,0x00,(EX_REQUEST_NUMBERS[EX_PTR] & 0xFF)]);
-        client.write (WDATA); 
-        break;
-      
-      case 'B':		//BUS 1-32
-        var PNR = (EX_REQUEST_NUMBERS[EX_PTR] +24)//OFFSET BUS same Command but Numbers 25 to 56
-        WDATA= Buffer.from ([0xF0,0x49,0x00,PNR]);
-        client.write (WDATA); 
-        break;
-      
-      case 'D':		//DMX 1-544
-        var PNR = (EX_REQUEST_NUMBERS[EX_PTR] +256)//OFFSET DMX =256 --> 0x0101 to 0x320 max
-        WDATA= Buffer.from ([0xF0,0x49,((PNR >> 8) & 0xFF),(PNR & 0xFF)]);
-        client.write (WDATA); 
-        break;
-      case 'C':		//CHARBUFFER 1-8, create Request Command
-        var PNR = (EX_REQUEST_NUMBERS[EX_PTR] +0xE0)//OFFSET CHAR BUFFER same Command PORT REQUEST
-        WDATA= Buffer.from ([0xF0,0x49,0x00,PNR]);
-        client.write (WDATA); 
-        break;
-      default:
-        return;
-        break;
-    }
-    EX_PTR+=1;    //next pointer 
-    
-    //Power Calculation  log("Gerät Nr. " + i + ": " + getObject(id).name + ": " + status);
-    for (var i=0;i< PW_REQUEST_NAMES.length;i++){
-      POWERmeasure(i);
-    }
-  }
-}
 
 //Updates the Power value of an channel by the Index of PW_REQUEST_NAMES
 function POWERmeasure (i){
@@ -437,7 +412,7 @@ function CBclientRECEIVE(RXdata) {
               {adapter.setState(exNAME+"_min",exFLOAT);} 
             else 
               {
-                if (exFLOAT < state.val){adapter.setState(exNAME+"_min",exFLOAT);}
+                if (exFLOAT < state.val){adapter.setState(exNAME+"_min", exFLOAT);}
               }
             }
             );
@@ -501,7 +476,6 @@ function GetCHARBUFFER (number){
 }
 
 
-/*
 // If started as allInOne/compact mode => return function to create instance
 if (module && module.parent) {
   module.exports = startAdapter;
@@ -509,5 +483,3 @@ if (module && module.parent) {
   // or start the instance directly
   startAdapter();
 }
-*/
-
