@@ -8,20 +8,21 @@
         "de": "ioBroker Adapter für OPC UA Klient"
       }
     },
-    "title": "OPCUAClient",
+    "title": "OPC-UA Client for Unified automation",
     "titleLang": {
-      "en": "OPCUAClient ioBroker adapter",
-      "de": "OPCUAClient ioBroker Adapter"
+      "en": "OPC-UA Client ioBroker adapter",
+      "de": "OPC-UA Client ioBroker Adapter"
     },
     "desc": {
-      "en": "Connects to OPCUA Server and start reading tags",
-      "de": "Verbindet zum OPCUA Server und start mit dem Tags lesen"
+      "en": "This adapter connects to specified OPC UA Server and start reading/writing tags",
+      "de": "Der Adapter verbindet zum OPC UA Server und start mit dem Tags Lesen/Schreiben"
     },
     "authors": [
       "Vladislav Arsic <vladislav.arsic@hotmail.com>"
     ],
     "keywords": [
       "ioBroker",
+      "OPC UA",
       "OPC UA client",
       "Industry4.0",
       "Industrial Automation",
@@ -32,11 +33,12 @@
     "main": "main.js",
     "icon": "opcua.png",
     "enabled": true,
-    "extIcon": "http://192.168.1.213/varsic79/ioBroker.opcua-client/master/admin/opcua.png",
+    "messagebox": true,
+    "extIcon": "http://192.168.1.213/varsic79/ioBroker.opcua-client/admin/opcua.png",
     "readme": "http://192.168.1.213/varsic79/ioBroker.opcua-client/master/README.md",
     "loglevel": "info",
     "mode": "daemon",
-    "type": "general",
+    "type": "communication",
     "compact": true,
     "materialize": true,
     "materializeTab": true,
@@ -55,7 +57,7 @@
         "js-controller": ">=1.4.2"
       }
     ],
-    "installedFrom": "http://192.168.1.213/varsic79/ioBroker.opcua-client/master/ab852a955a80"
+    "installedFrom": "/home/vlada/Development/iobroker/adapter_development/iobroker.opcua-client"
   },
   "native": {
     "ipaddress": "0.0.0.0",
