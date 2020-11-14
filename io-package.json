@@ -10,8 +10,8 @@
     },
     "title": "OPC-UA Client for Unified automation",
     "titleLang": {
-      "en": "OPC-UA Client ioBroker adapter",
-      "de": "OPC-UA Client ioBroker Adapter"
+      "en": "OPC-UA Client",
+      "de": "OPC-UA Klient"
     },
     "desc": {
       "en": "This adapter connects to specified OPC UA Server and start reading/writing tags",
