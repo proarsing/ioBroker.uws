@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "opcua-client",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "news": {
-      "0.0.1": {
+      "0.0.2": {
         "en": "ioBroker adapter for OPC UA client",
         "de": "ioBroker Adapter für OPC UA Klient"
       }
@@ -60,11 +60,46 @@
     "installedFrom": "/home/vlada/Development/iobroker/adapter_development/iobroker.opcua-client"
   },
   "native": {
-    "ipaddress": "0.0.0.0",
-    "port": "48010",
-    "requesttiming": "500",
-    "lastdmxchannel": "32"
+    "endpointUrl": "opc.tcp://",
+    "myDeviceId": "DeviceId",
+    "configFile": "file: ./config/opcconfig.js",
+    "extlogging": "false"
   },
-  "objects": [],
-  "instanceObjects": []
+  "objects": [
+
+  ],
+  "instanceObjects": [
+    {
+        "_id":  "info",
+        "type": "channel",
+        "common": {
+            "name": "Information"
+        },
+        "native": {}
+    },
+    {
+        "_id": "info.connection",
+        "type": "state",
+        "common": {
+            "role": "indicator.connected",
+            "name": "If connected to OPC UA Server",
+            "type": "boolean",
+            "read": true,
+            "write": false,
+            "def": false
+        },
+        "native": {}
+    },
+    {
+        "_id":  "info.event",
+        "type": "state",
+        "common": {
+            "name": "Events for GUI",
+            "type": "string",
+            "write": false,
+            "read": true
+        },
+        "native": {}
+    }
+  ]
 }

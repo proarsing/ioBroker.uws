@@ -1,28 +1,29 @@
 'use strict';
 //OPC UA client Adapter for ioBroker
-//REV 0.0.1
+//REV 0.0.2
 //Update to the last version
 
-//REV 0.0.1 First release
+//REV 0.0.2 First stable release
 const utils = require('@iobroker/adapter-core');
 
-var LOG_ALL = false;						// Flag to activate full logging
-
 //OPC UA CONNECTION values
-var IPADR  = "0.0.0.0";				// OPC UA Server IP address
-var PORT = 48010;							// OPC UA Server port
-var TIMING = 1000;            // Sampling interval
+var UASERVER_ENDPOINT_URL = ""     // OPC UA Server OPC UA Server endpoint url
+var OPCUA_TAGS_TO_MONITOR = [];
+var deviceWithOPCUAServerId = "";
+
+let shutdownSignalCount;
 
 
 // OPC UA configuration
-const nodeidConfig = require('./lib/opcconfig');
+const uaclient = require('./lib/opcua-client')
+const nodeidConfig = require('./config/opcconfig');
 
 let adapter;
+let path;
 
-var APPLICATIONstopp = false;		//FLAG that shows that a reconnect process is runnig, after an error has occured.
-
-// FLAG, true when connection established and free of error
-const IS_ONLINE  = false;
+let LOG_ALL = false;						// FLAG to activate full logging
+let OPCUASessionInitiated = false;		// FLAG that shows that a connection to OPC UA Server was initiated at all. EndpointURL must be valid
+let IS_ONLINE  = false; // FLAG, true when connection established and free of error
 
 function startAdapter(options) {
   const optionSave = options || {};
@@ -31,102 +32,161 @@ function startAdapter(options) {
   adapter = new utils.Adapter(optionSave);
   
   // When Adapter is ready then connecting to OPC UA Server and Subscribe necessary Handles
+  adapter.on ('ready', async() => {
 
-  //*************************************  ADAPTER STARTS with ioBroker *******************************************
-  adapter.on ('ready', () => {
-    // Move the ioBroker Adapter configuration to the container values 
-    IPADR = adapter.config.ipaddress;
-    PORT = adapter.config.port;
-    TIMING = adapter.config.samplinginterval; 
-    //EX_REQUEST_LIST = adapter.config.addchannels;
-    LOG_ALL = adapter.config.extlogging;
+      /* Configuration of OPC UA tags should be done in external config file with PATH: ./config/opcconfig.js */
 
-    // LIMIT the request timimng	
-    if (TIMING <100) {
-      TIMING = 100;
-    }
-    
-    adapter.log.info ("OPC UA Server " + IPADR + " Port:" + PORT);
+      // event handlers
+      shutdownSignalCount = 0;
+      uaclient.emitter.on('connection_break', async () => await gracefullShutdown('connection_break'));
+      //uaclient.emitter.on('connection_lost', handleConnectionLostEvent );
+      uaclient.emitter.on('connected', handleOpcClientConnectionEvent );
 
-    //Initialize ioBrokers state objects if they dont exist
-    adapter.log.info('nodeidConfig.nodeidList.length is : ' + nodeidConfig.nodeidList.length);
-    for ( let i=0 ; i < nodeidConfig.nodeidList.length; i++ ) {
-      adapter.log.info(nodeidConfig.nodeidList[i]);
-      adapter.setObjectNotExists ('some_folder.' + nodeidConfig.nodeidList[i], {
-        type:'state',
-        common:{
-          name:'OPC UA channel ' + i,
-          type:'number',
-          role:'value',
-          read:true,
-          write:true
-        },
-        native:{}
-      });
-    }
+      // Move the ioBroker Adapter configuration to the container values 
+      UASERVER_ENDPOINT_URL = adapter.config.endpointUrl;
+      deviceWithOPCUAServerId = adapter.config.myDeviceId;
+      LOG_ALL = adapter.config.extlogging;
+      OPCUA_TAGS_TO_MONITOR = nodeidConfig.nodeidList;
 
-  /*
-  //User specific requests of addtional port values, create one object for each value
-    for (i=0; i < EX_REQUEST_NAMES.length; i++){
-      adapter.setObjectNotExists (EX_REQUEST_NAMES[i],{
-        type:'state',
-        common:{name: EX_REQUEST_NAMES[i],type:'number',role:'value',read:true,write:false},
-        native:{}
-      });	
-      if (EX_MINMAX_TRACKING) {
-        adapter.setObjectNotExists (EX_REQUEST_NAMES[i]+"_min",{
-          type:'state',
-          common:{name: EX_REQUEST_NAMES[i]+"_min",type:'number',role:'value',read:true,write:true},
-          native:{}
-        });	
-        adapter.setObjectNotExists (EX_REQUEST_NAMES[i]+"_max",{
-          type:'state',
-          common:{name: EX_REQUEST_NAMES[i]+"_max",type:'number',role:'value',read:true,write:true},
-          native:{}
-        });	
-        adapter.setObjectNotExists (EX_REQUEST_NAMES[i]+"_reset",{
-          type:'state',
-          common:{name: EX_REQUEST_NAMES[i]+"_reset",type:'boolean',role:'value',read:true,write:true},
-          native:{}
-        });	
-      }
-    }
-    
-  //POWER Reading Values 	
-  for (i=0; i < PW_REQUEST_OUTPUT.length; i++){
-      //RUNTIME OBJECT hours
-      adapter.setObjectNotExists (PW_REQUEST_RUNTIME[i],{
-        type:'state',
-        common:{name: PW_REQUEST_RUNTIME[i],type:'number',role:'value',read:true,write:true},
-        native:{}
-      });
-      //Consumtion value only if load is forwarded
-      if (PW_REQUEST_KW[i] >0)
-      {
-        adapter.setObjectNotExists (PW_REQUEST_OUTPUT[i],{
-          type:'state',
-          common:{name: PW_REQUEST_OUTPUT[i],type:'number',role:'value',read:true,write:true},
-          native:{}
-        });
-      }
-    }
-  */
+      try {
+          // Create & reset connection stat at adapter start
+          // await this.create_state('info.connection', 'Connected', true);
+          adapter.getState('info.connection', (err, state) => {
+            (!state || state.val) && adapter.setState('info.connection', { val: false, ack: true });
+          });
 
-    //Enable receiving of change events for all objects
-    adapter.subscribeStates('*');
+          // first let's remove all existing states in .variables channel, if any
+          if (LOG_ALL) adapter.log.info('Getting all Existing states now...');
+          const existingStates = await getAllExistingStates();
 
-    // Connect the DMXface server (function below)
-    /*CONNECT_CLIENT();*/
+          if (LOG_ALL) adapter.log.info('Starting deleting of existing objects/states, if any');
 
-  });
+          for (let j=0; j < existingStates.length ; j++) {
+            if (LOG_ALL) adapter.log.info('Existing state ' + existingStates[j] + " will be deleted");
+            await adapter.delObject(existingStates[j], function (err) {
+              if (err) adapter.log.error('Cannot delete object: ' + err);
+            });
+          }
+
+          if (LOG_ALL) adapter.log.info('The Removal of existing states is finished!');
+
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+
+          if (!UASERVER_ENDPOINT_URL || UASERVER_ENDPOINT_URL === 'opc.tcp://') {
+
+            adapter.log.error('No OPC-UA Server endpoint ! Please define URL endpoint in Adapter Instance settings.');
+            OPCUASessionInitiated = false;
+            // stop here!
+          } else {
+
+            OPCUASessionInitiated = true;
+
+            adapter.setObjectNotExists(adapter.namespace + '.variables', {
+              type: 'channel',
+              common: {
+                name: 'OPC-UA variables',
+              },
+              native: {},
+            });
+            
+            //Initialize ioBrokers state objects if they dont exist
+            path = adapter.namespace + ".variables." + deviceWithOPCUAServerId;
+            for ( let i=0 ; i < OPCUA_TAGS_TO_MONITOR.length; i++ ) {
+              if (LOG_ALL) adapter.log.info('Creating new state with NodeId: ' + OPCUA_TAGS_TO_MONITOR[i].nodeId);
+              adapter.setObjectNotExists (path + handleFolderName(OPCUA_TAGS_TO_MONITOR[i].subFolder) + "." + handleOpcuaNodeName(OPCUA_TAGS_TO_MONITOR[i].nodeId), {
+                type:'state',
+                common:{
+                  name: OPCUA_TAGS_TO_MONITOR[i].variableName,
+                  type: handleOpcuaNodeType(OPCUA_TAGS_TO_MONITOR[i].dataType),
+                  role:'value',
+                  read: true,
+                  write: true
+                },
+                native: {
+                  nodeId: OPCUA_TAGS_TO_MONITOR[i].nodeId,
+                  dataTypeStr: OPCUA_TAGS_TO_MONITOR[i].dataType,
+                  //timestampStr: OPCUA_TAGS_TO_MONITOR[i].timestamp
+                }
+              });
+            }
+
+            //Enable receiving of change events for all objects
+            adapter.subscribeStates('*');
+        
+
+            // Create and start the OPCUA connection.
+            await uaclient.init(UASERVER_ENDPOINT_URL, deviceWithOPCUAServerId, adapter, LOG_ALL);
+        
+            // Create new OPC UA subscription and start monitoring of OPC UA nodes
+            let mainSubscription;
+            mainSubscription = await uaclient.monitorNodes(deviceWithOPCUAServerId, OPCUA_TAGS_TO_MONITOR, (points) => {  
+              //adapter.log.info('points = ' + points);
+              if (typeof(points) === 'object') {
+                //if (LOG_ALL) adapter.log.info(points.data.value); // 0.999999999345
+                //if (LOG_ALL) adapter.log.info(points.data.nodeid); // "ns=1;s=sin"
+        
+                if ( findNodeInTagList(points.data.nodeid, OPCUA_TAGS_TO_MONITOR) ) {
+                  //if (LOG_ALL) adapter.log.info(path);
+                  adapter.setState(path + handleFolderName(points.data.subFolder) + "." + handleOpcuaNodeName(points.data.nodeid), { val: points.data.value, ack: true });
+                } else {
+                  adapter.log.error("NodeId doesn't exist in OpcUaTagList");
+                }
+              }
+        
+            });
+            if (LOG_ALL) adapter.log.info('mainSubsciption is: '+ mainSubscription.subscriptionId);
+        
+        /*
+            let readOpcTagsintervalId;
+            // read single OPC UA tag value
+            readOpcTagsintervalId = setInterval(() => {
+              uaclient.readSingleOpcNodeValue(deviceWithOPCUAServerId, 'ns=1;s=saw', (data) => {
+                  adapter.log.info(data);
+                });
+            }, 500);
+        */
+        /*
+            const POLL_INTERVAL = 250;
+            let opcReadUpdatingInterval;
+        
+            // Execute regular polling of opcua values (metrics) every POLL_INTERVAL (ms)
+            opcReadUpdatingInterval = setInterval( async() => {
+              await uaclient.readMultiOpcNodesValue(deviceWithOPCUAServerId, NODESID_TO_MONITOR, (points) => {
+                adapter.log.info(points.data.value);
+              });
+            }, POLL_INTERVAL);
+        */
+        
+        } // end of if-else
+
+      } catch(err) {
+        adapter.log.error('Error catched !!!');
+        adapter.log.error(err);
+        process.exit(1);
+      } // end of try - catch block
+
+  }); // end of adapter.on('ready')
 
   //************************************* ADAPTER CLOSED BY ioBroker *****************************************
   adapter.on ('unload', (callback) => {
-    APPLICATIONstopp = true
+
+    uaclient.emitter.removeAllListeners();
+
     IS_ONLINE = false;
     //clearInterval (OBJID_REQUEST);
-    adapter.log.info ('OPC Client: Close connection, cancel service');
-    //client.close;
+    adapter.log.info ('OPC Client: Close connection, cancel service.');
+
+
+    if (OPCUASessionInitiated) {
+      uaclient.terminateAllSubscriptions();
+      
+      adapter.log.info(" closing session");
+      uaclient.close();
+  
+      uaclient.disconnectClient();
+    }
+
+    adapter.setState('info.connection', { val: false, ack: true });
 
     if ( typeof(callback) === 'function' ) {
       callback();
@@ -140,339 +200,202 @@ function startAdapter(options) {
       return ;
     }
 
-    adapter.log.info( id + "  /  " + state );
-  /*
-    if (!IS_ONLINE){return;}							//DMXface Offline	
-    if (obj==null) {
-      adapter.log.info ('Object: '+ id + ' terminated by user');
+    // do not process self generated state changes (by OPC UA Server instance)
+    if (state.ack === true && id) {
+      //if (LOG_ALL) adapter.log.info('The state ' + id + ' has been changed');
       return;
-    }
-      
-    if (obj.from.search (adaptername) != -1) {return;}    // do not process self generated state changes (by dmxface instance) 
-                                //exit if sender = dmxface
-    var PORTSTRING = id.substring(adaptername.length+3);  				//remove Instance name
-    // if (PORTSTRING[0] ='.'){PORTSTRING = id.substring(adaptername.length+4)};  optional removal if more than 10 Instances are used 
-    //Statistic value´s are not processed
-    if (PORTSTRING.search ('STAT_') > -1) {return;}
-    //Reset of min max 
-    if (PORTSTRING.search ('_reset') >-1)
-    {
-      var STATEname = PORTSTRING.replace ("_reset","");
-      adapter.getState(STATEname , function (err, state) {	//get current value
-        var newVAL =0;
-        if (state !=null) {							//EXIT if state is not initialized yet
-          if (state.val !=null) {					//Exit if value not initialized
-            newVAL= state.val;
-          }
-        }
-        adapter.setState(STATEname+'_min',newVAL,true);
-        adapter.setState(STATEname+'_max',newVAL,true);
-        adapter.setState(STATEname+'_reset',false,true);
-        adapter.log.info ('Reset MIN / MAX of: ' + STATEname);
-      });
-      return;	
-    }
 
-    //Select the object type by the first character of the object name
-    //'O' OUTPORT , 'D' DMX, 'B' BUSINPORT, INPORT and IR_RECEIVE cannot be set 
-    var PORTNUMBER =-1
-    var WDATA 
-    switch (PORTSTRING[0]) {
-      case 'O':		//OUTPORT
-        var PORTNUMBER = parseInt(PORTSTRING.substring(7));
-        WDATA= Buffer.from ([0xF0,0x4F,(PORTNUMBER & 0xFF),0]);  // DMXFACE ACTIVE SEND Command switch Portnumber to OFF
-        if (obj.val ==true) {WDATA[3] = 1;}						// IF TRUE then ON 
-        client.write (WDATA); 
-        break;
-  //REV 1.1 Upgrade auf 544 channels			
-      case 'D':		//DMX CHANNEL
-        var PORTNUMBER = parseInt(PORTSTRING.substring(3));
-        WDATA= Buffer.from ([0xF0,0x44,((PORTNUMBER >> 8)&0xFF),(PORTNUMBER &0xFF),obj.val]);  // DMXFACE ACTIVE SEND Command SET DMX CHANNEL
-        client.write (WDATA); 
-        break;
-      case 'B':	 	//BUS IO 
-        var PORTNUMBER = parseInt(PORTSTRING.substring(3));
-        PORTNUMBER+=24;
-        WDATA= Buffer.from ([0xF0,0x4F,(PORTNUMBER & 0xFF),0]);  // DMXFACE ACTIVE SEND BUS IO
-        if (obj.val ==true) {WDATA[3] = 1;}						// IF TRUE then ON 
-        client.write (WDATA); 
-        break;
-      case 'S':  		//SCENE CALLED by the change of the object value 
-        var SCENE_NUMBER = obj.val;
-        if (SCENE_NUMBER < 1){return;}
-        if (SCENE_NUMBER > 180){return;}
-        WDATA= Buffer.from ([0xF0,0x53,SCENE_NUMBER]);  // DMXFACE ACTIVE SEND BUS IO
-        client.write (WDATA); 
-        break;
-      
-      case 'P':  		//PROGRAM CALLED by the change of the object value   
-        var PG_NUMBER = obj.val;
-        if (PG_NUMBER < 1){return;}
-        if (PG_NUMBER > 28){return;}
-        WDATA= Buffer.from ([0xF0,0x50,PG_NUMBER]);  // DMXFACE ACTIVE SEND BUS IO
-        client.write (WDATA); 
-        break;
-      default:
-        return;
-        break;
+    } else if ( state.ack === false && id) {
+      if (!IS_ONLINE) {
+        adapter.log.warn('No connection');
+      } else {
+        //const shortId = id.substring(id.indexOf('.', 9) + 1, id.length);
+        const shortId = constructId(id);
+        if (LOG_ALL) adapter.log.info(shortId);
+
+        adapter.getObject(shortId, (err, data) => {
+          if (!err) {
+            if (LOG_ALL) adapter.log.info(JSON.stringify(data));
+              uaclient.write(data.native.nodeId, data.native.dataTypeStr, state.val);
+          }
+        });
+      }
     }
-  */
   });
 
   return adapter;
 }
 
-//************************************* TCP CONNECT /ERROR / CLOSED ****************************************
-function CONNECT_CLIENT () {
-  IS_ONLINE = false;
-  adapter.log.info("Connecting DMXface controller " + IPADR + " "+ PORT);
-  client.connect (PORT,IPADR);
+
+//************************************* OPC CONNECT /ERROR / CLOSED ****************************************
+// try a gracefull shutdown in case of error
+async function gracefullShutdown (e) {
+  try {
+    adapter.log.error('Error ' + (e));
+    shutdownSignalCount++;
+  
+    if (shutdownSignalCount > 1) return;
+  
+    uaclient.emitter.removeAllListeners(['connection_break']);
+  
+    //adapter.setState('info.connection', { val: false, ack: true });
+    IS_ONLINE && adapter && adapter.setState && adapter.setState('info.connection', { val: false, ack: true });
+  
+    IS_ONLINE = false;
+    //clearInterval (OBJID_REQUEST);
+    uaclient.terminateAllSubscriptions();
+  
+    adapter.log.info(" closing session");
+    uaclient.close();
+  
+    adapter.log.warn('Gracefull Shutdown. Terminating adapter.');
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    //typeof adapter.terminate === 'function' ? adapter.terminate(11) : process.exit(11); // this is without automatic reset
+    typeof adapter.terminate === 'function' ? adapter.terminate(0) : process.exit(0); // with adapter automatic reset
+    //process.exit(0);
+
+  } catch(err) {
+    adapter.log.error('Error during gracefullShutdown of Adapter ' + err);
+  }
 }
 
-//CLIENT SUCCESSFUL CONNECTED (CALLBACK from CONNECT_CLIENT)
-function CBclientCONNECT () {
-  //adapter.setState ('info.connection',true,true);
-  adapter.log.info ('DMXface connection established');
+// OPC-UA CLIENT SUCCESSFUL CONNECTED
+function handleOpcClientConnectionEvent() {
+  adapter.log.info ('info from MAIN: OPC-UA Client established connection with OPC-UA Server');
   IS_ONLINE = true;
+  adapter.setState('info.connection', { val: true, ack: true });
 }
 
-//CLIENT ERROR HANDLER AND CONNECTION RESTART
-function CBclientERROR(Error) {
-  IS_ONLINE = false;											//Flag Connection not longer online
-  adapter.log.error ("Error DMXface connection: " + Error);	
-  client.close;												//Close the connection
+function handleConnectionLostEvent() {
+  adapter.log.info('info from MAIN: OPC UA connection closed');
+  IS_ONLINE = false;
+  adapter.setState('info.connection', { val: false, ack: true });
 }
-function CBclientCLOSED() {
-  adapter.log.warn ("DMXface connection closed");
-  if (APPLICATIONstopp ==false) {
-    var RCTASK = setTimeout (CONNECT_CLIENT,30000);			//within 30 Sec.
-    adapter.log.info ("Trying to reconnect in 30sec.");
+
+
+//************************************* Other support/helper functions *************************************************
+// helper function for dataType conversion
+function handleOpcuaNodeType(dataType) {
+  let jsTypeToReturn;
+  if (dataType === 'Double') {
+    jsTypeToReturn = 'number';
+  } else if (dataType === 'Sbyte') {
+    jsTypeToReturn = 'number';
+  } else if (dataType === 'Byte') {
+    jsTypeToReturn = 'number';
+  } else if (dataType === 'Int16') {
+    jsTypeToReturn = 'number';
+  } else if (dataType === 'Int32') {
+    jsTypeToReturn = 'number';
+  } else if (dataType === 'UInt16') {
+    jsTypeToReturn = 'number';
+  } else if (dataType === 'UInt32') {
+    jsTypeToReturn = 'number';
+  } else if (dataType === 'UInt64') {
+    jsTypeToReturn = 'number';
+  } else if (dataType === 'Float') {
+    jsTypeToReturn = 'number';
+  } else if (dataType === 'Boolean') {
+      jsTypeToReturn = 'boolean';
+  } else if (dataType === 'String') {
+    jsTypeToReturn = 'string';
+  } else {
+    adapter.log.error('datatype not found - number will be implemented!');
+    jsTypeToReturn = 'number';
   }
-    
+
+  return jsTypeToReturn;
 }
 
+// helper function to get all exisiting states in .variables channel, if any
+// returns a promise
+function getAllExistingStates () {
+  return new Promise( (resolve, reject) => {
+    let arr = [];
+    adapter.getStates(adapter.namespace + '.variables.*', function (err, states) {
 
-//Updates the Power value of an channel by the Index of PW_REQUEST_NAMES
-function POWERmeasure (i){
-  var IDread = adapter.name + '.' + adapter.instance + "." +PW_REQUEST_NAMES[i];
-  var IDout = adapter.name + '.' + adapter.instance + "." +PW_REQUEST_OUTPUT[i];
-  var IDruntime = adapter.name + '.' + adapter.instance + "." +PW_REQUEST_RUNTIME[i];
-  var POWERtoADD = PW_REQUEST_KW[i];
-  var PW_bool = PW_REQUEST_BOOL[i];
-  var ADDTIME = parseFloat(TIMING)/(1000*3600);
-  //get the current state of the port, if port state not exists --> exit
-  adapter.getState(IDread, function (err, state) {
-    if (state ==null) {return;}							//EXIT if state is not initialized yet
-    if (state.val ==null) {return;}						//Exit if value not initialized
-    var CURRENT_VALUE = state.val;
-    //if port is true or >0 do the powercalculation and runtime adding
-    if (CURRENT_VALUE)
-      {
-      //Power consumtion processing only if load value exists
-      if (POWERtoADD >0)
-      {
-        adapter.getState(IDout, function (err, state) {
-          var POWERvalue = 0;
-          if (state != null){if (state.val !=null){POWERvalue =  parseFloat(state.val);}}
+      if (err) {
+        adapter.log.err(' Did not find existing states, error =' + err);
+        return reject(err);
+      }
 
-          if (PW_bool){
-            POWERvalue+=POWERtoADD;
-          } else {
-            POWERvalue+=POWERtoADD*CURRENT_VALUE/255;
-          }
-          adapter.setState(IDout,POWERvalue,true);
-        });	
-      }			
-      //Get current runtime value, if not exists, create with 0
-      adapter.getState(IDruntime, function (err, state) {
-        var newRUNTIME = 0;
-        if (state != null){if (state.val !=null){newRUNTIME =  parseFloat(state.val);}}
-        newRUNTIME+= ADDTIME;
-        adapter.setState(IDruntime,newRUNTIME,true);
-      });	
-
-    }
+      for (let id in states) {
+        //const helperArr = id.split(".").slice(0, 2);
+        //helperArr.slice(0, 2);
+        let _id = constructId(id);
+        //adapter.log.info(_id);
+        if (_id !== undefined) {
+          arr.push(_id);
+        }
+      }
+      resolve(arr);
+    });
   });
-  return;
 }
 
+// helper function to make Id without adapter.namespace
+function constructId(str) {
+  let shortId;
+  let auxArray = [];
+  let splicedArr = [];
 
+  auxArray = str.split(".");
+  splicedArr = auxArray.splice(2);
+  shortId = splicedArr.join('.');
 
+  return shortId;
+}
 
-//************************************* PROCESSING ASYNCHRON RECEIVED DATA FROM DMXface ******************************************
-function CBclientRECEIVE(RXdata) {
-  if (RXdata.length < 3) {return;}			// Minimum Length of response ist start 0xF0, Signature 0xnn and at least one data byte 
-  
-  if (RXdata[0] != 0xF0) {					// CHECK START BYTE =0xF0
-    return;
-  }
-  var i;
-  var x;	
-  
-  switch (RXdata[1]) {
-    case 0x01:			// IR CODE 10 Bytes received, 8 Bytes IR Code
-      if (RXdata.length == 10){    
-        var BUFF = "";
-        var IRCODE = "";
-        for (i=2;i<10;i++){
-          BUFF = RXdata[i].toString(16).toUpperCase();
-          //BUFF = BUFF.toUpperCase;
-          if (BUFF.length <2) {IRCODE += '0'+BUFF} else {IRCODE += BUFF}
-        }
-        adapter.setState('IR_RECEIVE',IRCODE,false);
-      }
-      
-      break;
-
-    case 0x02:   		//RECEIVING INPORT STATE INFO //9 Bytes RX length
-      if (RXdata.length == 9){    
-        var ONOFF = false;
-        x =1;
-        for (i=1;i<0x81;i*=2){
-          if (i & RXdata[8]){ONOFF = true;} else {ONOFF = false;}
-          adapter.setState(GetIN(x),ONOFF);
-          if (i & RXdata[7]){ONOFF = true;} else {ONOFF = false;}
-          adapter.setState(GetIN(x+8),ONOFF);
-          //if (i & RXdata[6]){ONOFF = true;} else {ONOFF = false;}
-          //adapter.setState(GetIN(x+16),ONOFF);
-          if (i & RXdata[5]){ONOFF = true;} else {ONOFF = false;}
-          adapter.setState(GetBUS(x),ONOFF);
-          if (i & RXdata[4]){ONOFF = true;} else {ONOFF = false;}
-          adapter.setState(GetBUS(x+8),ONOFF);
-          if (i & RXdata[3]){ONOFF = true;} else {ONOFF = false;}
-          adapter.setState(GetBUS(x+16),ONOFF);
-          if (i & RXdata[2]){ONOFF = true;} else {ONOFF = false;}
-          adapter.setState(GetBUS(x+24),ONOFF);
-          x+=1;
-        }
-      }
-      break;
-    
-    case 0x04:	//OUTPORT  //5 Bytes RX length
-      var ONOFF = false;
-      if (RXdata.length == 5){   
-        x =1;
-        for (i=1;i<0x81;i*=2){
-          if (i & RXdata[4]){ONOFF = true;} else {ONOFF = false;}
-          adapter.setState(GetOUT(x),ONOFF);
-          if (i & RXdata[3]){ONOFF = true;} else {ONOFF = false;}
-          adapter.setState(GetOUT(x+8),ONOFF);
-          x+=1;
-        }
-      }
-      break;
-    
-    case 0x49: //AD INPORT REQUEST RETURN  0xF0,0x49,PORTNR_HIGH,PORTNR LOW , bDIGITAL VALUE, bANALOG VALUE, 'TEXT VALUE eg. 34.55 GRAD'
-      //EXTRACT PORT and Float value, write it to the coreesponding object if exists
-      if (RXdata.length > 8){   
-        var exFLOAT = 0;				//Resulting float Value 
-        var exNUMBER = (RXdata[2]*256)+ RXdata[3]		//PORT NUMBER  1-24 INPORTS 1-24
-                                //25-56 BUS 1-32
-        var exPORTS = '';							    //0x101-0x320 DMX 1-544
-        var exNAME ='';
-        if (exNUMBER > 0 && exNUMBER <=24) {				
-          exPORTS ='I';							// INPORT
-          exNAME = "VALUE_" + GetIN(exNUMBER);	// OBJECT NAME
-        }
-        if (exNUMBER >=25 && exNUMBER <=56) {				
-          exNUMBER-=24;							// REMOVE OFFSET
-          exPORTS ='B';							// BUS PORT
-          exNAME = "VALUE_" + GetBUS(exNUMBER);	// OBJECT NAME
-        }
-        //UPGRADE REV 1.1  CHAR BUFFER REQUESTS valid from DMXface Firmware 5.17
-        if (exNUMBER >=0xE1 && exNUMBER <=0xE8) {				
-          exNUMBER-=0xE0;							// REMOVE OFFSET
-          exPORTS ='C';							// BUS PORT
-          exNAME = "VALUE_" + GetCHARBUFFER(exNUMBER);	// OBJECT NAME
-        }
-        
-        if (exNUMBER >=257 && exNUMBER <=481) {				
-          exNUMBER-=256;							// REMOVE OFFSET
-          exPORTS ='D';							// BUS PORT
-          exNAME = "VALUE_" + GetDMX(exNUMBER);	// OBJECT NAME
-        }
-        if (exNAME.length==0){return;}				//EXIT if portnumber not applicable
-        // get the value string out of RX from pos 6++	
-        var strVALUE='';			
-        for (i=6;i< RXdata.length;i++){
-          strVALUE+=String.fromCharCode (RXdata[i]);
-          }	
-        //Replace "," to "." and convert to float
-        exFLOAT = parseFloat (strVALUE.replace (",","."));
-        //Transfer to OBJECT
-        if (LOG_ALL){adapter.log.info ("RX: " + exNAME + " DATA:" + exFLOAT)};
-        adapter.setState(exNAME,exFLOAT);
-        
-        if (EX_MINMAX_TRACKING) {
-        
-          //SET / READ the min /max value for this object, if null set to initial value
-          var MIN_CURRENT;
-          adapter.getState(exNAME+"_min", (err, state) => 
-            {if (state==null) 
-              {adapter.setState(exNAME+"_min",exFLOAT);} 
-            else 
-              {
-                if (exFLOAT < state.val){adapter.setState(exNAME+"_min", exFLOAT);}
-              }
-            }
-            );
-          var MAX_CURRENT;
-          adapter.getState(exNAME+"_max", (err, state) => 
-            {if (state==null) 
-              {adapter.setState(exNAME+"_max",exFLOAT);} 
-            else 
-              {
-                if (exFLOAT > state.val){adapter.setState(exNAME+"_max",exFLOAT);}
-              }
-            }
-            );
-        }
-        
-      }
-      break;
-    
-    case 0xFF:	//DMX OUT DATA
-      var USED_DXMOUT = (RXdata.length-2);
-      if (DMX_CHANNELS_USED < USED_DXMOUT) {
-        USED_DXMOUT = DMX_CHANNELS_USED;
-        }
-      
-      for (i=1;i <= USED_DXMOUT;i++){
-        adapter.setState(GetDMX(i),RXdata[i+1]);				
-        }
-      break;
-      
-      
-    default:
-      return;
-      break;
+// helper functions to handle Sub-folder name
+function handleFolderName (rawData) {
+  if ( !rawData || rawData === "") {
+    const valueToReturn = "";
+    return valueToReturn;
   }
 
-  
+  let fixedName = "";
+
+  let name = rawData.replace(/\//g, ".").replace(/\\/g, ".");
+  if ( name.charAt(name.length - 1) === ".") {
+    // remove last element of the string
+    fixedName = name.slice(0, -1);
+  } else {
+    fixedName = name;
+  }
+
+  return fixedName;
 }
 
-//************************************* Other support functions *************************************************
-function GetDMX (number){
-  if (number <10) {return 'DMX00'+number;}
-  if (number <100) {return 'DMX0'+number;}
-  return 'DMX'+number;
+// helper functions to handle opcua Node name
+function handleOpcuaNodeName (rawData) {
+  let name = rawData.replace(/\//g, "_").replace(/\./g, "_").replace(/\;/g, "_").replace(/\:/g, "_");
+
+  return name;
 }
-function GetOUT (number){
-  if (number <10) {return 'OUTPORT0'+number;}
-  return 'OUTPORT'+number;
+
+// helper functions to find opcua tag in opcua Tag Liste
+function findNodeInTagList(nodeId, _opcUaTagList) {
+  return _opcUaTagList.find(tag => tag.nodeId === nodeId);
 }
-function GetIN (number){
-  if (number <10) {return 'INPORT0'+number;}
-  return 'INPORT'+number;
+
+// helper functions to detect index of opcua Node in opcua Tag Liste
+function detectIndex(nodeId, _opcUaTagList) {
+  return _opcUaTagList.findIndex(item => item.nodeId === nodeId);
 }
-function GetBUS (number){
-  if (number <10) {return 'BUS0'+number;}
-  return 'BUS'+number;
+
+// helper function that returns last element of the array
+function last(array) {
+  return array[array.length - 1];
 }
-//Rev 1.1 added for char Buffers
-function GetCHARBUFFER (number){
-  if (number <10) {return 'CHAR0'+number;}
-  return 'CHAR'+number;
+
+// helper function for terminating OPC UA subscription
+const clearOpc = (subscription) => {
+  if (LOG_ALL) adapter.log.info(" clear OPC");
+  if (subscription) {
+    uaclient.terminateOpcSubscription(subscription);
+  }
 }
 
 

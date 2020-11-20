@@ -5,6 +5,13 @@
 OPC UA client for programmable logic controllers.
 You can read OPC UA tags from OPC UA servers easily.
 
+## Configuration
+Configuration of OPC UA Client should be done in config file:
+./config/opcconfig.js
+
+## Changelog
+### 0.0.2 (2020-11-20)
+* (Vladislav Arsic) Communication with OPC UA Server established
 
 ## Changelog
 ### 0.0.1 (2020-11-12)
