@@ -20,9 +20,10 @@ const nodeidConfig = require('./config/opcconfig');
 
 let adapter;
 let path;
+let mainSubscription; // opcua subscription
 
 let LOG_ALL = false;						// FLAG to activate full logging
-let OPCUASessionInitiated = false;		// FLAG that shows that a connection to OPC UA Server was initiated at all. EndpointURL must be valid
+let OPCUASessionIsInitiated = false;		// FLAG that shows that a connection to OPC UA Server was initiated at all. EndpointURL must be valid
 let IS_ONLINE  = false; // FLAG, true when connection established and free of error
 
 function startAdapter(options) {
@@ -75,11 +76,11 @@ function startAdapter(options) {
           if (!UASERVER_ENDPOINT_URL || UASERVER_ENDPOINT_URL === 'opc.tcp://') {
 
             adapter.log.error('No OPC-UA Server endpoint ! Please define URL endpoint in Adapter Instance settings.');
-            OPCUASessionInitiated = false;
+            OPCUASessionIsInitiated = false;
             // stop here!
           } else {
 
-            OPCUASessionInitiated = true;
+            OPCUASessionIsInitiated = true;
 
             adapter.setObjectNotExists(adapter.namespace + '.variables', {
               type: 'channel',
@@ -115,10 +116,9 @@ function startAdapter(options) {
         
 
             // Create and start the OPCUA connection.
-            await uaclient.init(UASERVER_ENDPOINT_URL, deviceWithOPCUAServerId, adapter, LOG_ALL);
+            await uaclient.init(UASERVER_ENDPOINT_URL, adapter, LOG_ALL);
         
             // Create new OPC UA subscription and start monitoring of OPC UA nodes
-            let mainSubscription;
             mainSubscription = await uaclient.monitorNodes(deviceWithOPCUAServerId, OPCUA_TAGS_TO_MONITOR, (points) => {  
               //adapter.log.info('points = ' + points);
               if (typeof(points) === 'object') {
@@ -134,7 +134,7 @@ function startAdapter(options) {
               }
         
             });
-            if (LOG_ALL) adapter.log.info('mainSubsciption is: '+ mainSubscription.subscriptionId);
+            if (LOG_ALL) adapter.log.info('mainSubsciption is : '+ mainSubscription.subscriptionId);
         
         /*
             let readOpcTagsintervalId;
@@ -170,23 +170,33 @@ function startAdapter(options) {
   //************************************* ADAPTER CLOSED BY ioBroker *****************************************
   adapter.on ('unload', (callback) => {
 
-    uaclient.emitter.removeAllListeners();
+    //uaclient.emitter.removeAllListeners();
+    uaclient.emitter.removeAllListeners(['connection_break']);
+    uaclient.emitter.removeAllListeners(['connected']);
 
     IS_ONLINE = false;
     //clearInterval (OBJID_REQUEST);
     adapter.log.info ('OPC Client: Close connection, cancel service.');
 
+    if (OPCUASessionIsInitiated) {
+      
+      if (mainSubscription) {
+        clearOpc(mainSubscription);
+        mainSubscription = null;
+      };
 
-    if (OPCUASessionInitiated) {
       uaclient.terminateAllSubscriptions();
       
-      adapter.log.info(" closing session");
+      if (LOG_ALL) adapter.log.info(" closing session");
       uaclient.close();
-  
+      
       uaclient.disconnectClient();
     }
 
-    adapter.setState('info.connection', { val: false, ack: true });
+    //adapter.setState('info.connection', { val: false, ack: true });
+    adapter.getState('info.connection', (err, state) => {
+      (!state || state.val) && (state.val !== false) && adapter.setState('info.connection', { val: false, ack: true });
+    });
 
     if ( typeof(callback) === 'function' ) {
       callback();
@@ -243,18 +253,20 @@ async function gracefullShutdown (e) {
   
     IS_ONLINE = false;
     //clearInterval (OBJID_REQUEST);
+    mainSubscription && clearOpc(mainSubscription);
+    mainSubscription = null;
     uaclient.terminateAllSubscriptions();
   
-    adapter.log.info(" closing session");
-    uaclient.close();
+    // if (LOG_ALL) adapter.log.info(" closing session");
+    // uaclient.close();
   
-    adapter.log.warn('Gracefull Shutdown. Terminating adapter.');
+    adapter.log.warn('Envoke Gracefull Shutdown. Terminating adapter.');
 
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     //typeof adapter.terminate === 'function' ? adapter.terminate(11) : process.exit(11); // this is without automatic reset
-    typeof adapter.terminate === 'function' ? adapter.terminate(0) : process.exit(0); // with adapter automatic reset
-    //process.exit(0);
+    //typeof adapter.terminate === 'function' ? adapter.terminate(1) : process.exit(1); // with adapter automatic reset, or should it be 0 ?
+    process.exit(1); // or 0
 
   } catch(err) {
     adapter.log.error('Error during gracefullShutdown of Adapter ' + err);

@@ -9,6 +9,10 @@ You can read OPC UA tags from OPC UA servers easily.
 Configuration of OPC UA Client should be done in config file:
 ./config/opcconfig.js
 
+## To-Do
+- Use settings for opc ua tag list from custom configuration file defined in PATH in Web UI,
+  instead of static(fix) PATH
+
 ## Changelog
 ### 0.0.2 (2020-11-20)
 * (Vladislav Arsic) Communication with OPC UA Server established
