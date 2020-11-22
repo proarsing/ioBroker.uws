@@ -73,9 +73,9 @@ function startAdapter(options) {
 
           await new Promise((resolve) => setTimeout(resolve, 3000));
 
-          if (!UASERVER_ENDPOINT_URL || UASERVER_ENDPOINT_URL === 'opc.tcp://') {
+          if (!UASERVER_ENDPOINT_URL || UASERVER_ENDPOINT_URL === 'opc.tcp://' || urlIsInvalid(UASERVER_ENDPOINT_URL)) {
 
-            adapter.log.error('No OPC-UA Server endpoint ! Please define URL endpoint in Adapter Instance settings.');
+            adapter.log.error('No valid OPC-UA Server endpoint ! Please define URL endpoint in Adapter Instance settings.');
             OPCUASessionIsInitiated = false;
             // stop here!
           } else {
@@ -378,6 +378,17 @@ function handleFolderName (rawData) {
   }
 
   return fixedName;
+}
+
+// helper function to test if endpoint URL is valid or not
+function urlIsInvalid(url) {
+//  if (/\s/.test(url)) {
+//    // It has any kind of whitespace
+//  }
+  const patt = new RegExp(/\s/);
+  const res = patt.test(url);
+
+  return res;
 }
 
 // helper functions to handle opcua Node name
