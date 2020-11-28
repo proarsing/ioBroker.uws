@@ -1,22 +1,25 @@
 'use strict';
 //OPC UA client Adapter for ioBroker
-//REV 0.0.2
+//REV 0.0.3
 //Update to the last version
 
 //REV 0.0.2 First stable release
+//REV 0.0.3 Custom config file selection
 const utils = require('@iobroker/adapter-core');
+const fs = require('fs');
 
 //OPC UA CONNECTION values
-var UASERVER_ENDPOINT_URL = ""     // OPC UA Server OPC UA Server endpoint url
-var OPCUA_TAGS_TO_MONITOR = [];
+var UASERVER_ENDPOINT_URL = ""      // OPC UA Server OPC UA Server endpoint url
+var OPC_CONFIG_FILE;
+var OPCUA_TAGS_TO_MONITOR = [];     // Holds all opc ua tags that we want to monitor
 var deviceWithOPCUAServerId = "";
 
 let shutdownSignalCount;
 
 
 // OPC UA configuration
-const uaclient = require('./lib/opcua-client')
-const nodeidConfig = require('./config/opcconfig');
+const uaclient = require('./lib/opcua-client');
+var nodeidConfig = null;
 
 let adapter;
 let path;
@@ -35,8 +38,6 @@ function startAdapter(options) {
   // When Adapter is ready then connecting to OPC UA Server and Subscribe necessary Handles
   adapter.on ('ready', async() => {
 
-      /* Configuration of OPC UA tags should be done in external config file with PATH: ./config/opcconfig.js */
-
       // event handlers
       shutdownSignalCount = 0;
       uaclient.emitter.on('connection_break', async () => await gracefullShutdown('connection_break'));
@@ -47,7 +48,17 @@ function startAdapter(options) {
       UASERVER_ENDPOINT_URL = adapter.config.endpointUrl;
       deviceWithOPCUAServerId = adapter.config.myDeviceId;
       LOG_ALL = adapter.config.extlogging;
-      OPCUA_TAGS_TO_MONITOR = nodeidConfig.nodeidList;
+      OPC_CONFIG_FILE = adapter.config.configFile;
+
+      /* Configuration of OPC UA tags should be done in external config file with PATH: __dirname + '/config/opcconfig-0.js' */
+
+      OPC_CONFIG_FILE = handleConfigFileDir(OPC_CONFIG_FILE);
+
+      if (fs.existsSync(__dirname + OPC_CONFIG_FILE)) {
+        nodeidConfig = require(__dirname + OPC_CONFIG_FILE);
+        OPCUA_TAGS_TO_MONITOR = nodeidConfig.nodeidList;
+        if (LOG_ALL) adapter.log.info('[OK] OPC UA Tag list loaded from config file');
+      }
 
       try {
           // Create & reset connection stat at adapter start
@@ -396,6 +407,15 @@ function handleOpcuaNodeName (rawData) {
   let name = rawData.replace(/\//g, "_").replace(/\./g, "_").replace(/\;/g, "_").replace(/\:/g, "_");
 
   return name;
+}
+
+// helper function to handle config file directory
+function handleConfigFileDir (configFilePath) {
+  if (configFilePath.startsWith('/')) {
+      return configFilePath;
+  } else {
+      return '/' + configFilePath;
+  }
 }
 
 // helper functions to find opcua tag in opcua Tag Liste

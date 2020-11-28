@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "opcua-client",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "news": {
-      "0.0.2": {
+      "0.0.3": {
         "en": "ioBroker adapter for OPC UA client",
         "de": "ioBroker Adapter für OPC UA Klient"
       }
@@ -62,7 +62,7 @@
   "native": {
     "endpointUrl": "opc.tcp://",
     "myDeviceId": "DeviceId",
-    "configFile": "file: ./config/opcconfig.js",
+    "configFile": "/config/opcconfig-0.js",
     "extlogging": "false"
   },
   "objects": [
