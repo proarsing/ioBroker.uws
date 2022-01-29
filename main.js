@@ -38,7 +38,7 @@ const TOKEN = 'secret_token';
 function startAdapter(options) {
   const optionSave = options || {};
 
-  Object.assign(optionSave, { name: adapterName });
+  Object.assign(optionSave, { name: 'uws' });
   adapter = new utils.Adapter(optionSave);
   
   //**************************************** ADAPTER READY  *******************************************

@@ -1,7 +1,9 @@
 ![Logo](admin/uws.png)
 # ioBroker uWebSockets server Adapter
 
-## Server
+## Description
+This adapter is in early development.
+
 Users can use this adapter to connect their apps to ioBroker via uws.
 uWebSockets server is very fast. It comes with both router and pub/sub support and is suited for extraordinary performance needs.
 
