@@ -35,7 +35,7 @@
     "enabled": true,
     "messagebox": true,
     "extIcon": "https://github.com/proarsing/ioBroker.uws/admin/uws.png",
-    "readme": "https://github.com/proarsing/ioBroker.uws/master/README.md",
+    "readme": "https://github.com/proarsing/ioBroker.uws/main/README.md",
     "loglevel": "info",
     "mode": "daemon",
     "type": "communication",
