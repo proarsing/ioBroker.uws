@@ -1,288 +1,147 @@
 'use strict';
-//OPC UA client Adapter for ioBroker
-//REV 0.0.3
-//Update to the last version
+/**
+ *
+ * uWebSocket.js Server Adapter for ioBroker. 
+ * Copyright 2022, proarsing  <vladislav.arsic@hotmail.com>
+ *
+ */
 
-//REV 0.0.2 First stable release
-//REV 0.0.3 Custom config file selection
+// REV 0.0.1
+// Update to the last version
+
+const adapterName = require('./package.json').name.split('.').pop();
 const utils = require('@iobroker/adapter-core');
-const fs = require('fs');
+const ioWebSocket = require('./lib/uws.js');
 
-//OPC UA CONNECTION values
-var UASERVER_ENDPOINT_URL = ""      // OPC UA Server OPC UA Server endpoint url
-var OPC_CONFIG_FILE;
-var OPCUA_TAGS_TO_MONITOR = [];     // Holds all opc ua tags that we want to monitor
-var deviceWithOPCUAServerId = "";
-
-let shutdownSignalCount;
-
-
-// OPC UA configuration
-const uaclient = require('./lib/opcua-client');
-var nodeidConfig = null;
-
+/*
+ * variables initiation
+ */
 let adapter;
 let path;
-let mainSubscription; // opcua subscription
+let webServer;
 
+let PORT = 9091;
+let AUTH = false;
+let SECURE = false;
+let IP_ADDR = "0.0.0.0";
 let LOG_ALL = false;						// FLAG to activate full logging
 let OPCUASessionIsInitiated = false;		// FLAG that shows that a connection to OPC UA Server was initiated at all. EndpointURL must be valid
 let IS_ONLINE  = false; // FLAG, true when connection established and free of error
 
+const LOGIN = 'secret_login';
+const TOKEN = 'secret_token';
+
+/*
+ * ADAPTER
+ *
+ */
 function startAdapter(options) {
   const optionSave = options || {};
 
-  Object.assign(optionSave, { name: "opcua-client" });
+  Object.assign(optionSave, { name: adapterName });
   adapter = new utils.Adapter(optionSave);
   
-  // When Adapter is ready then connecting to OPC UA Server and Subscribe necessary Handles
+  //**************************************** ADAPTER READY  *******************************************
+  // is called when databases are connected and adapter received configuration.
+  // start here!
   adapter.on ('ready', async() => {
-
+      /*
       // event handlers
       shutdownSignalCount = 0;
       uaclient.emitter.on('connection_break', async () => await gracefullShutdown('connection_break'));
       //uaclient.emitter.on('connection_lost', handleConnectionLostEvent );
       uaclient.emitter.on('connected', handleOpcClientConnectionEvent );
+      */
 
       // Move the ioBroker Adapter configuration to the container values 
-      UASERVER_ENDPOINT_URL = adapter.config.endpointUrl;
-      deviceWithOPCUAServerId = adapter.config.myDeviceId;
+      IP_ADDR = adapter.config.bind;
+      PORT = adapter.config.port;
       LOG_ALL = adapter.config.extlogging;
-      OPC_CONFIG_FILE = adapter.config.configFile;
 
-      /* Configuration of OPC UA tags should be done in external config file with PATH: __dirname + '/config/opcconfig-0.js' */
+      // Create & reset connection stat at adapter start
+      // await this.create_state('info.connection', 'Connected', true);
+      adapter.getState('info.connection', (err, state) => {
+        (!state || state.val) && adapter.setState('info.connection', { val: false, ack: true });
+      });
 
-      OPC_CONFIG_FILE = handleConfigFileDir(OPC_CONFIG_FILE);
+      // first let's remove all existing states in .variables channel, if any
+      if (LOG_ALL) adapter.log.info('Getting all Existing states now...');
+      const existingStates = await getAllExistingStates();
+      /*
+      if (LOG_ALL) adapter.log.info('Starting deleting of existing objects/states, if any');
 
-      if (fs.existsSync(__dirname + OPC_CONFIG_FILE)) {
-        nodeidConfig = require(__dirname + OPC_CONFIG_FILE);
-        OPCUA_TAGS_TO_MONITOR = nodeidConfig.nodeidList;
-        if (LOG_ALL) adapter.log.info('[OK] OPC UA Tag list loaded from config file');
+      for (let j=0; j < existingStates.length ; j++) {
+        if (LOG_ALL) adapter.log.info('Existing state ' + existingStates[j] + " will be deleted");
+        await adapter.delObject(existingStates[j], function (err) {
+          if (err) adapter.log.error('Cannot delete object: ' + err);
+        });
       }
 
-      try {
-          // Create & reset connection stat at adapter start
-          // await this.create_state('info.connection', 'Connected', true);
-          adapter.getState('info.connection', (err, state) => {
-            (!state || state.val) && adapter.setState('info.connection', { val: false, ack: true });
-          });
+      if (LOG_ALL) adapter.log.info('The Removal of existing states is finished!');
 
-          // first let's remove all existing states in .variables channel, if any
-          if (LOG_ALL) adapter.log.info('Getting all Existing states now...');
-          const existingStates = await getAllExistingStates();
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      */
 
-          if (LOG_ALL) adapter.log.info('Starting deleting of existing objects/states, if any');
-
-          for (let j=0; j < existingStates.length ; j++) {
-            if (LOG_ALL) adapter.log.info('Existing state ' + existingStates[j] + " will be deleted");
-            await adapter.delObject(existingStates[j], function (err) {
-              if (err) adapter.log.error('Cannot delete object: ' + err);
-            });
-          }
-
-          if (LOG_ALL) adapter.log.info('The Removal of existing states is finished!');
-
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-
-          if (!UASERVER_ENDPOINT_URL || UASERVER_ENDPOINT_URL === 'opc.tcp://' || urlIsInvalid(UASERVER_ENDPOINT_URL)) {
-
-            adapter.log.error('No valid OPC-UA Server endpoint ! Please define URL endpoint in Adapter Instance settings.');
-            OPCUASessionIsInitiated = false;
-            // stop here!
-          } else {
-
-            OPCUASessionIsInitiated = true;
-
-            adapter.setObjectNotExists(adapter.namespace + '.variables', {
-              type: 'channel',
-              common: {
-                name: 'OPC-UA variables',
-              },
-              native: {},
-            });
-            
-            //Initialize ioBrokers state objects if they dont exist
-            path = adapter.namespace + ".variables." + deviceWithOPCUAServerId;
-            for ( let i=0 ; i < OPCUA_TAGS_TO_MONITOR.length; i++ ) {
-              if (LOG_ALL) adapter.log.info('Creating new state with NodeId: ' + OPCUA_TAGS_TO_MONITOR[i].nodeId);
-              adapter.setObjectNotExists (path + handleFolderName(OPCUA_TAGS_TO_MONITOR[i].subFolder) + "." + handleOpcuaNodeName(OPCUA_TAGS_TO_MONITOR[i].nodeId), {
-                type:'state',
-                common:{
-                  name: OPCUA_TAGS_TO_MONITOR[i].variableName,
-                  type: handleOpcuaNodeType(OPCUA_TAGS_TO_MONITOR[i].dataType),
-                  role:'value',
-                  read: true,
-                  write: true
-                },
-                native: {
-                  nodeId: OPCUA_TAGS_TO_MONITOR[i].nodeId,
-                  dataTypeStr: OPCUA_TAGS_TO_MONITOR[i].dataType,
-                  //timestampStr: OPCUA_TAGS_TO_MONITOR[i].timestamp
-                }
-              });
-            }
-
-            //Enable receiving of change events for all objects
-            adapter.subscribeStates('*');
-        
-
-            // Create and start the OPCUA connection.
-            await uaclient.init(UASERVER_ENDPOINT_URL, adapter, LOG_ALL);
-        
-            // Create new OPC UA subscription and start monitoring of OPC UA nodes
-            mainSubscription = await uaclient.monitorNodes(deviceWithOPCUAServerId, OPCUA_TAGS_TO_MONITOR, (points) => {  
-              //adapter.log.info('points = ' + points);
-              if (typeof(points) === 'object') {
-                //if (LOG_ALL) adapter.log.info(points.data.value); // 0.999999999345
-                //if (LOG_ALL) adapter.log.info(points.data.nodeid); // "ns=1;s=sin"
-        
-                if ( findNodeInTagList(points.data.nodeid, OPCUA_TAGS_TO_MONITOR) ) {
-                  //if (LOG_ALL) adapter.log.info(path);
-                  adapter.setState(path + handleFolderName(points.data.subFolder) + "." + handleOpcuaNodeName(points.data.nodeid), { val: points.data.value, ack: true });
-                } else {
-                  adapter.log.error("NodeId doesn't exist in OpcUaTagList");
-                }
-              }
-        
-            });
-            if (LOG_ALL) adapter.log.info('mainSubsciption is : '+ mainSubscription.subscriptionId);
-        
-        /*
-            let readOpcTagsintervalId;
-            // read single OPC UA tag value
-            readOpcTagsintervalId = setInterval(() => {
-              uaclient.readSingleOpcNodeValue(deviceWithOPCUAServerId, 'ns=1;s=saw', (data) => {
-                  adapter.log.info(data);
-                });
-            }, 500);
-        */
-        /*
-            const POLL_INTERVAL = 250;
-            let opcReadUpdatingInterval;
-        
-            // Execute regular polling of opcua values (metrics) every POLL_INTERVAL (ms)
-            opcReadUpdatingInterval = setInterval( async() => {
-              await uaclient.readMultiOpcNodesValue(deviceWithOPCUAServerId, NODESID_TO_MONITOR, (points) => {
-                adapter.log.info(points.data.value);
-              });
-            }, POLL_INTERVAL);
-        */
-        
-        } // end of if-else
-
-      } catch(err) {
-        adapter.log.error('Error catched !!!');
-        adapter.log.error(err);
-        process.exit(1);
-      } // end of try - catch block
+      main();
 
   }); // end of adapter.on('ready')
 
   //************************************* ADAPTER CLOSED BY ioBroker *****************************************
+  // is called when adapter shuts down - callback has to be called under any circumstances!
   adapter.on ('unload', (callback) => {
-
-    //uaclient.emitter.removeAllListeners();
-    uaclient.emitter.removeAllListeners(['connection_break']);
-    uaclient.emitter.removeAllListeners(['connected']);
-
-    IS_ONLINE = false;
-    //clearInterval (OBJID_REQUEST);
-    adapter.log.info ('OPC Client: Close connection, cancel service.');
-
-    if (OPCUASessionIsInitiated) {
-      
-      if (mainSubscription) {
-        clearOpc(mainSubscription);
-        mainSubscription = null;
-      };
-
-      uaclient.terminateAllSubscriptions();
-      
-      if (LOG_ALL) adapter.log.info(" closing session");
-      uaclient.close();
-      
-      uaclient.disconnectClient();
-    }
-
-    //adapter.setState('info.connection', { val: false, ack: true });
-    adapter.getState('info.connection', (err, state) => {
-      (!state || state.val) && (state.val !== false) && adapter.setState('info.connection', { val: false, ack: true });
-    });
-
-    if ( typeof(callback) === 'function' ) {
+    try {
+      //adapter.setState('info.connection', { val: false, ack: true });
+      adapter.getState('info.connection', (err, state) => {
+        (!state || state.val) && (state.val !== false) && adapter.setState('info.connection', { val: false, ack: true });
+      });
+      adapter.log.info('cleaned everything up...');
+      // if ( typeof(callback) === 'function' ) {
+      //   callback();
+      // }
+      callback();
+    } catch (e) {
+      // if ( typeof(callback) === 'function' ) {
+      //   callback();
+      // }
       callback();
     }
   });
 
-
   //************************************* Adapter STATE has CHANGED ******************************************	
+  // is called if a subscribed state changes
   adapter.on ('stateChange', (id, state) => {
     if (!state) {
       return ;
     }
+    if (LOG_ALL) adapter.log.info('The state ' + id + ' has been changed');
+  });
 
-    // do not process self generated state changes (by OPC UA Server instance)
-    if (state.ack === true && id) {
-      //if (LOG_ALL) adapter.log.info('The state ' + id + ' has been changed');
-      return;
+  //*********************************** Message was sent to Adapter ******************************************	
+  // Some message was sent to adapter instance over message box. Used by email, pushover, text2speech, ...
+  adapter.on('message', obj => {
+    if (typeof obj === 'object' && obj.message) {
+        if (obj.command === 'send') {
+            // e.g. send email or pushover or whatever
+            if (LOG_ALL) adapter.log.info('send command');
 
-    } else if ( state.ack === false && id) {
-      if (!IS_ONLINE) {
-        adapter.log.warn('No connection');
-      } else {
-        //const shortId = id.substring(id.indexOf('.', 9) + 1, id.length);
-        const shortId = constructId(id);
-        if (LOG_ALL) adapter.log.info(shortId);
-
-        adapter.getObject(shortId, (err, data) => {
-          if (!err) {
-            if (LOG_ALL) adapter.log.info(JSON.stringify(data));
-              uaclient.write(data.native.nodeId, data.native.dataTypeStr, state.val);
-          }
-        });
-      }
+            // Send response in callback if required
+            if (obj.callback) adapter.sendTo(obj.from, obj.command, 'Message received', obj.callback);
+        }
     }
   });
 
   return adapter;
 }
 
+function main() {
 
-//************************************* OPC CONNECT /ERROR / CLOSED ****************************************
-// try a gracefull shutdown in case of error
-async function gracefullShutdown (e) {
-  try {
-    adapter.log.error('Error ' + (e));
-    shutdownSignalCount++;
-  
-    if (shutdownSignalCount > 1) return;
-  
-    uaclient.emitter.removeAllListeners(['connection_break']);
-  
-    //adapter.setState('info.connection', { val: false, ack: true });
-    IS_ONLINE && adapter && adapter.setState && adapter.setState('info.connection', { val: false, ack: true });
-  
-    IS_ONLINE = false;
-    //clearInterval (OBJID_REQUEST);
-    mainSubscription && clearOpc(mainSubscription);
-    mainSubscription = null;
-    uaclient.terminateAllSubscriptions();
-  
-    // if (LOG_ALL) adapter.log.info(" closing session");
-    // uaclient.close();
-  
-    adapter.log.warn('Envoke Gracefull Shutdown. Terminating adapter.');
+  //Enable receiving of change events for all objects
+  adapter.subscribeStates('*');
 
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    //typeof adapter.terminate === 'function' ? adapter.terminate(11) : process.exit(11); // this is without automatic reset
-    //typeof adapter.terminate === 'function' ? adapter.terminate(1) : process.exit(1); // with adapter automatic reset, or should it be 0 ?
-    process.exit(1); // or 0
-
-  } catch(err) {
-    adapter.log.error('Error during gracefullShutdown of Adapter ' + err);
-  }
+  webServer = new ioWebSocket(adapter, PORT, LOG_ALL, { login = LOGIN, token = TOKEN});
+  
 }
+
 
 // OPC-UA CLIENT SUCCESSFUL CONNECTED
 function handleOpcClientConnectionEvent() {
@@ -299,39 +158,6 @@ function handleConnectionLostEvent() {
 
 
 //************************************* Other support/helper functions *************************************************
-// helper function for dataType conversion
-function handleOpcuaNodeType(dataType) {
-  let jsTypeToReturn;
-  if (dataType === 'Double') {
-    jsTypeToReturn = 'number';
-  } else if (dataType === 'Sbyte') {
-    jsTypeToReturn = 'number';
-  } else if (dataType === 'Byte') {
-    jsTypeToReturn = 'number';
-  } else if (dataType === 'Int16') {
-    jsTypeToReturn = 'number';
-  } else if (dataType === 'Int32') {
-    jsTypeToReturn = 'number';
-  } else if (dataType === 'UInt16') {
-    jsTypeToReturn = 'number';
-  } else if (dataType === 'UInt32') {
-    jsTypeToReturn = 'number';
-  } else if (dataType === 'UInt64') {
-    jsTypeToReturn = 'number';
-  } else if (dataType === 'Float') {
-    jsTypeToReturn = 'number';
-  } else if (dataType === 'Boolean') {
-      jsTypeToReturn = 'boolean';
-  } else if (dataType === 'String') {
-    jsTypeToReturn = 'string';
-  } else {
-    adapter.log.error('datatype not found - number will be implemented!');
-    jsTypeToReturn = 'number';
-  }
-
-  return jsTypeToReturn;
-}
-
 // helper function to get all exisiting states in .variables channel, if any
 // returns a promise
 function getAllExistingStates () {
@@ -441,8 +267,11 @@ const clearOpc = (subscription) => {
   }
 }
 
-
-// If started as allInOne/compact mode => return function to create instance
+/*
+ * COMPACT MODE
+ * If started as allInOne/compact mode => return function to create instance
+ *
+ */
 if (module && module.parent) {
   module.exports = startAdapter;
 } else {

@@ -1,41 +1,41 @@
 {
   "common": {
-    "name": "opcua-client",
-    "version": "0.0.3",
+    "name": "uws",
+    "version": "0.0.1",
     "news": {
-      "0.0.3": {
-        "en": "ioBroker adapter for OPC UA client",
-        "de": "ioBroker Adapter für OPC UA Klient"
+      "0.0.1": {
+        "en": "ioBroker adapter for uWebSockets server",
+        "de": "ioBroker Adapter für uWebSockets server"
       }
     },
-    "title": "OPC-UA Client for Unified automation",
+    "title": "super fast uWebSockets server",
     "titleLang": {
-      "en": "OPC-UA Client",
-      "de": "OPC-UA Klient"
+      "en": "uWebSockets Server",
+      "de": "uWebSockets Server"
     },
     "desc": {
-      "en": "This adapter connects to specified OPC UA Server and start reading/writing tags",
-      "de": "Der Adapter verbindet zum OPC UA Server und start mit dem Tags Lesen/Schreiben"
+      "en": "This adapter creates uWebSocket server, which can be used to communicate with ioBroker using websocket protocol",
+      "de": "Dieser Adapter erstellt einen uWebSocket Server, der zur Kommunikation mit ioBroker über das Websocket-Protokoll verwendet werden kann"
     },
     "authors": [
       "Vladislav Arsic <vladislav.arsic@hotmail.com>"
     ],
     "keywords": [
       "ioBroker",
-      "OPC UA",
-      "OPC UA client",
-      "Industry4.0",
-      "Industrial Automation",
-      "Smart Home Automation"
+      "uWebSockets",
+      "websockets",
+      "SCADA",
+      "IIoT",
+      "Home Automation"
     ],
     "license": "MIT",
     "platform": "Javascript/Node.js",
     "main": "main.js",
-    "icon": "opcua.png",
+    "icon": "uws.png",
     "enabled": true,
     "messagebox": true,
-    "extIcon": "http://192.168.1.213/varsic79/ioBroker.opcua-client/admin/opcua.png",
-    "readme": "http://192.168.1.213/varsic79/ioBroker.opcua-client/master/README.md",
+    "extIcon": "https://github.com/proarsing/ioBroker.uws/admin/uws.png",
+    "readme": "https://github.com/proarsing/ioBroker.uws/master/README.md",
     "loglevel": "info",
     "mode": "daemon",
     "type": "communication",
@@ -45,24 +45,25 @@
     "adminTab": {
       "singleton": true,
       "name": {
-        "en": "OPC UA Client",
-        "de": "OPC UA Client"
+        "en": "uWebSockets Server",
+        "de": "uWebSockets Server"
       },
-      "link": "www.opcfoundation.com",
+      "link": "",
       "fa-icon": "info"
     },
     "supportCustoms": true,
     "dependencies": [
       {
-        "js-controller": ">=1.4.2"
+        "js-controller": ">=2.0.0"
       }
     ],
-    "installedFrom": "/home/vlada/Development/iobroker/adapter_development/iobroker.opcua-client"
+    "installedFrom": "https://github.com/proarsing/ioBroker.uws"
   },
   "native": {
-    "endpointUrl": "opc.tcp://",
-    "myDeviceId": "DeviceId",
-    "configFile": "/config/opcconfig-0.js",
+    "port": 9091,
+    "auth": false,
+    "secure": false,
+    "bind": "0.0.0.0",
     "extlogging": "false"
   },
   "objects": [
@@ -82,11 +83,11 @@
         "type": "state",
         "common": {
             "role": "indicator.connected",
-            "name": "If connected to OPC UA Server",
-            "type": "boolean",
+            "name": "Info about connected socket clients",
+            "type": "string",
             "read": true,
             "write": false,
-            "def": false
+            "def": ""
         },
         "native": {}
     },

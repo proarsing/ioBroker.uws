@@ -1,33 +1,49 @@
-![Logo](admin/opcua.png)
-# ioBroker OPC-UA client Adapter
+![Logo](admin/uws.png)
+# ioBroker uWebSockets server Adapter
 
-## Client
-OPC UA client for programmable logic controllers.
-You can read OPC UA tags from OPC UA servers easily.
+## Server
+Users can use this adapter to connect their apps to ioBroker via uws.
+uWebSockets server is very fast. It comes with both router and pub/sub support and is suited for extraordinary performance needs.
 
-## Configuration
-Configuration of OPC UA Client should be done in config file:
-./config/opcconfig-0.js
+## Installation
+Please use the "adapter list" in ioBroker to install a stable version of this adapter. You can also use the CLI to install this adapter:
+    ```bash
+    iobroker add uws
+    ```
 
-## To-Do
-- Browsing of the OPC UA Tags in the Adapter configuration web page
+## Developer manual
+This section is intended for the developer. It can be deleted later
+
+### Getting started
+
+You are almost done, only a few steps left:
+1. Create a new repository on GitHub with the name `ioBroker.uws`
+2. Initialize the current folder as a new git repository:  
+    ```bash
+    git init -b main
+    git add .
+    git commit -m "Initial commit"
+    ```
+3. Link your local repository with the one on GitHub:  
+    ```bash
+    git remote add origin https://github.com/proarsing/ioBroker.uws
+    ```
+
+4. Push all files to the GitHub repo:  
+    ```bash
+    git push origin main
+    ```
+
+5. Head over to [main.js](main.js) and start programming!
 
 ## Changelog
-### 0.0.3 (2020-11-28)
-* (Vladislav Arsic) Use settings for opc ua tag list from custom configuration file defined in PATH in Web UI,
-  instead of static(fix) PATH
-
-### 0.0.2 (2020-11-20)
-* (Vladislav Arsic) Communication with OPC UA Server established
-
-## Changelog
-### 0.0.1 (2020-11-12)
+### 0.0.1 (2022-01-28)
 * (Vladislav Arsic) Initial release
 
 ## License
 MIT License
 
-Copyright (c) 2020 Vladislav Arsic vladislav.arsic@hotmail.com
+Copyright (c) 2022 proarsing <vladislav.arsic@hotmail.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
