@@ -26,13 +26,15 @@ You are almost done, only a few steps left:
     ```
 3. Link your local repository with the one on GitHub:  
     ```bash
-    git remote add origin https://github.com/proarsing/ioBroker.uws
+    git remote add origin https://github.com/proarsing/ioBroker.uws.git
     ```
 
 4. Push all files to the GitHub repo:  
     ```bash
     git push origin main
     ```
+    Username: your_username
+    Password: your_token
 
 5. Head over to [main.js](main.js) and start programming!
 
