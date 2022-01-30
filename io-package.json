@@ -35,7 +35,7 @@
     "enabled": true,
     "messagebox": true,
     "extIcon": "https://github.com/proarsing/ioBroker.uws/admin/uws.png",
-    "readme": "https://github.com/proarsing/ioBroker.uws/main/README.md",
+    "readme": "https://github.com/proarsing/ioBroker.uws/README.md",
     "loglevel": "info",
     "mode": "daemon",
     "type": "communication",
@@ -57,50 +57,48 @@
         "js-controller": ">=2.0.0"
       }
     ],
-    "installedFrom": "https://github.com/proarsing/ioBroker.uws"
+    "installedFrom": "/home/vlada/Development/iobroker/adapter_development/ioBroker.uws"
   },
   "native": {
-    "port": 9091,
+    "port": 9099,
     "auth": false,
     "secure": false,
     "bind": "0.0.0.0",
     "extlogging": "false"
   },
-  "objects": [
-
-  ],
+  "objects": [],
   "instanceObjects": [
     {
-        "_id":  "info",
-        "type": "channel",
-        "common": {
-            "name": "Information"
-        },
-        "native": {}
+      "_id": "info",
+      "type": "channel",
+      "common": {
+        "name": "Information"
+      },
+      "native": {}
     },
     {
-        "_id": "info.connection",
-        "type": "state",
-        "common": {
-            "role": "indicator.connected",
-            "name": "Info about connected socket clients",
-            "type": "string",
-            "read": true,
-            "write": false,
-            "def": ""
-        },
-        "native": {}
+      "_id": "info.connection",
+      "type": "state",
+      "common": {
+        "role": "indicator.connected",
+        "name": "Info about connected uwebsocket service",
+        "type": "boolean",
+        "read": true,
+        "write": false,
+        "def": ""
+      },
+      "native": {}
     },
     {
-        "_id":  "info.event",
-        "type": "state",
-        "common": {
-            "name": "Events for GUI",
-            "type": "string",
-            "write": false,
-            "read": true
-        },
-        "native": {}
+      "_id": "info.event",
+      "type": "state",
+      "common": {
+        "name": "Events for GUI",
+        "type": "string",
+        "write": false,
+        "read": true
+      },
+      "native": {}
     }
   ]
 }

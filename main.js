@@ -11,7 +11,8 @@
 
 const adapterName = require('./package.json').name.split('.').pop();
 const utils = require('@iobroker/adapter-core');
-const ioWebSocket = require('./lib/uws.js');
+const ioWebSocket = require('./lib/uws');
+
 
 /*
  * variables initiation
@@ -38,13 +39,16 @@ const TOKEN = 'secret_token';
 function startAdapter(options) {
   const optionSave = options || {};
 
-  Object.assign(optionSave, { name: 'uws' });
+  Object.assign(optionSave, { name: adapterName });
   adapter = new utils.Adapter(optionSave);
   
   //**************************************** ADAPTER READY  *******************************************
   // is called when databases are connected and adapter received configuration.
   // start here!
   adapter.on ('ready', async() => {
+      adapter.log.info('Adapter is starting');
+      adapter.log.info('Adapter name is = ' + adapterName);
+
       /*
       // event handlers
       shutdownSignalCount = 0;
@@ -54,9 +58,13 @@ function startAdapter(options) {
       */
 
       // Move the ioBroker Adapter configuration to the container values 
-      IP_ADDR = adapter.config.bind;
-      PORT = adapter.config.port;
+      IP_ADDR = adapter.config.bind || "0.0.0.0";
+      // PORT = adapter.config.port || 9099;
+      // adapter.log.info('PORT = ' + PORT);
       LOG_ALL = adapter.config.extlogging;
+
+      //Enable receiving of change events for all objects
+      adapter.subscribeStates('*');
 
       // Create & reset connection stat at adapter start
       // await this.create_state('info.connection', 'Connected', true);
@@ -67,6 +75,10 @@ function startAdapter(options) {
       // first let's remove all existing states in .variables channel, if any
       if (LOG_ALL) adapter.log.info('Getting all Existing states now...');
       const existingStates = await getAllExistingStates();
+
+      for (let j=0; j < existingStates.length ; j++) {
+        if (LOG_ALL) adapter.log.info('Existing state ' + existingStates[j]);
+      }
       /*
       if (LOG_ALL) adapter.log.info('Starting deleting of existing objects/states, if any');
 
@@ -90,10 +102,10 @@ function startAdapter(options) {
   // is called when adapter shuts down - callback has to be called under any circumstances!
   adapter.on ('unload', (callback) => {
     try {
-      //adapter.setState('info.connection', { val: false, ack: true });
-      adapter.getState('info.connection', (err, state) => {
-        (!state || state.val) && (state.val !== false) && adapter.setState('info.connection', { val: false, ack: true });
-      });
+      adapter.setState('info.connection', { val: false, ack: true });
+      // adapter.getState('info.connection', (err, state) => {
+      //   (!state || state.val) && (state.val !== false) && adapter.setState('info.connection', { val: false, ack: true });
+      // });
       adapter.log.info('cleaned everything up...');
       // if ( typeof(callback) === 'function' ) {
       //   callback();
@@ -133,13 +145,61 @@ function startAdapter(options) {
   return adapter;
 }
 
-function main() {
+async function main() {
 
-  //Enable receiving of change events for all objects
-  adapter.subscribeStates('*');
+  adapter.config.port = parseInt(adapter.config.port, 10) || 0;
+  adapter.log.info('port = ' + adapter.config.port);
 
-  webServer = new ioWebSocket(adapter, PORT, LOG_ALL, { login = LOGIN, token = TOKEN});
+  // let configPromises = [];
+
+  // configPromises.push(new Promise(resolve => {
+  //   adapter.getPort(adapter.config.port, (port)=> {
+  //     if (parseInt(port, 10) !== adapter.config.port && !adapter.config.findNextPort) {
+  //         adapter.log.error(`port ${adapter.config.port} already in use`);
+  //         return adapter.terminate ? adapter.terminate(utils.EXIT_CODES.ADAPTER_REQUESTED_TERMINATION) : process.exit(utils.EXIT_CODES.ADAPTER_REQUESTED_TERMINATION);
+  //     }
+
+  //     adapter.config.port = port;
+  //     adapter.log.info('port = ' + adapter.config.port);
+  //   });
+
+  //   resolve();
+  // }));
   
+  adapter.config.port = await checkPortNumber();
+
+  if (adapter.config.port) {
+    adapter.log.info('after promisses resovled');
+    // Promise.all(configPromises).then(res => {
+    //   adapter.log.info('after promisses resovled');
+    //   webServer = new ioWebSocket(adapter, adapter.config.port, LOG_ALL, { 
+    //     login: LOGIN,
+    //     token: TOKEN
+    //   });
+
+      webServer = new ioWebSocket(adapter, adapter.config.port, LOG_ALL, { 
+        login: LOGIN,
+        token: TOKEN
+      });
+
+      // event listeners goes here
+      // webServer.initIOServer(); // NIKAKO NE OVDE. Idu prvo event listeners
+      adapter.log.info('[main] befor event listener');
+      webServer.on('connected', (response) => {
+        adapter.log.info('[main] recieved connected event ' + response);
+        adapter.getState('info.connection', (err, state) => {
+          adapter.log.info('response = ' + response);
+          adapter.setState('info.connection', { val: response, ack: true });
+        });
+      });
+
+      // uWebSocket server initialization
+      webServer.initIOServer();
+
+  } else {
+    adapter.log.error('port missing');
+    adapter.terminate ? adapter.terminate(utils.EXIT_CODES.ADAPTER_REQUESTED_TERMINATION) : process.exit(utils.EXIT_CODES.ADAPTER_REQUESTED_TERMINATION);
+  }
 }
 
 
@@ -183,6 +243,21 @@ function getAllExistingStates () {
     });
   });
 }
+
+// helper function to check port number
+// returns a promise
+function checkPortNumber () {
+  return new Promise(function (resolve) {
+    adapter.getPort(adapter.config.port, (port)=> {
+      if (parseInt(port, 10) !== adapter.config.port && !adapter.config.findNextPort) {
+          adapter.log.error(`port ${adapter.config.port} already in use`);
+          return adapter.terminate ? adapter.terminate(utils.EXIT_CODES.ADAPTER_REQUESTED_TERMINATION) : process.exit(utils.EXIT_CODES.ADAPTER_REQUESTED_TERMINATION);
+      }
+
+      resolve(port);
+    });
+  });
+};
 
 // helper function to make Id without adapter.namespace
 function constructId(str) {
