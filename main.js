@@ -78,7 +78,7 @@ function startAdapter(options) {
   //**************************************** ADAPTER READY  *******************************************
   // is called when databases are connected and adapter received configuration.
   // start here!
-  adapter.on ('ready', async() => {
+  adapter.on('ready', async() => {
 
       // Move the ioBroker Adapter configuration to the container values 
       IP_ADDR = adapter.config.bind || "0.0.0.0";
@@ -108,7 +108,7 @@ function startAdapter(options) {
           }
         }
 
-        adapter.setObjectNotExists(adapter.namespace + '.variables', {
+        await adapter.setObjectNotExistsAsync(adapter.namespace + '.variables', {
           type: 'channel',
           common: {
             name: 'ServerAuxVars',
@@ -116,7 +116,7 @@ function startAdapter(options) {
           native: {},
         });
 
-        adapter.setObjectNotExists(adapter.namespace + ".variables" + ".clients_IP_addr", {
+        await adapter.setObjectNotExistsAsync(adapter.namespace + ".variables" + ".clients_IP_addr", {
           type: "state",
           common: {
             name: "Connected Clients IP",
@@ -129,9 +129,9 @@ function startAdapter(options) {
           },
           native: {},
         });
-        adapter.setState(adapter.namespace + '.variables.clients_IP_addr', { val: trackedClientsIP.showIpAddresses(), ack: true });
+        await adapter.setStateAsync(adapter.namespace + '.variables.clients_IP_addr', { val: trackedClientsIP.showIpAddresses(), ack: true });
 
-        adapter.setObjectNotExists(adapter.namespace + ".variables" + ".heartBeat", {
+        await adapter.setObjectNotExistsAsync(adapter.namespace + ".variables" + ".heartBeat", {
           type: "state",
           common: {
             name: "heartBeat",
@@ -153,7 +153,7 @@ function startAdapter(options) {
 
         appIntervals.push(hbInterval);
 
-        adapter.setObjectNotExists(adapter.namespace + ".info" + ".wsClientsNum", {
+        await adapter.setObjectNotExistsAsync(adapter.namespace + ".info" + ".wsClientsNum", {
           type: "state",
           common: {
             name: "wsClientsNum",
@@ -166,8 +166,7 @@ function startAdapter(options) {
           },
           native: {},
         });
-
-        adapter.setState('info.wsClientsNum', { val: 0, ack: true });
+        await adapter.setStateAsync('info.wsClientsNum', { val: 0, ack: true });
 
       } catch(err) {
         adapter.log.error('Error catched !!!');
@@ -236,8 +235,6 @@ function startAdapter(options) {
 async function main() {
 
   adapter.config.port = parseInt(adapter.config.port, 10) || 0;
-  adapter.log.info('port = ' + adapter.config.port);
-
   adapter.config.port = await checkPortNumber();
 
   if (adapter.config.port) {
