@@ -11,26 +11,59 @@
 
 const adapterName = require('./package.json').name.split('.').pop();
 const utils = require('@iobroker/adapter-core');
-const ioWebSocket = require('./lib/uws');
+const IOWebSocketSrv = require('./lib/uws');
 
 
 /*
  * variables initiation
  */
 let adapter;
-let path;
 let webServer;
 
-let PORT = 9091;
 let AUTH = false;
 let SECURE = false;
 let IP_ADDR = "0.0.0.0";
-let LOG_ALL = false;						// FLAG to activate full logging
-let OPCUASessionIsInitiated = false;		// FLAG that shows that a connection to OPC UA Server was initiated at all. EndpointURL must be valid
-let IS_ONLINE  = false; // FLAG, true when connection established and free of error
+let LOG_ALL = false; // FLAG to activate full logging
+let LOGIN = 'secret_login';
+let TOKEN = 'secret_token';
 
-const LOGIN = 'secret_login';
-const TOKEN = 'secret_token';
+let trackedClientsIP; // tracking of connected websocket clients IP addresse
+
+let appIntervals = [];
+const HEARTBEAT_INTERVAL = 1000; // in milliseconds
+const DEL_DEPRECTED_SUBS_INTERVAL_SEC = 60; // in seconds
+
+/**
+ * Class for tracking of IP addresses of connected websocket clients.
+ *
+ */
+ class TrackedClientsIP {
+  constructor() {
+    this.connectedClientsIP = [];
+  }
+  addClient(ip) {
+    ip && this.connectedClientsIP.push(ip);
+  }
+  getClientsCount() {
+    return this.connectedClientsIP.length;
+  }
+  removeClient(ipAddr) {
+    const idx = this.connectedClientsIP.indexOf(ipAddr);
+    if (idx >= 0) { 
+      this.connectedClientsIP.splice(idx, 1);
+    }
+  }
+  clear() {
+    this.connectedClientsIP.length = 0;
+  }
+  showIpAddresses() {
+    if (this.connectedClientsIP.length > 0 ) {
+      return ('IP: ' + this.connectedClientsIP.join(', '));
+    } else {
+      return ('IP: no IPs')
+    }
+  }
+}
 
 /*
  * ADAPTER
@@ -46,54 +79,103 @@ function startAdapter(options) {
   // is called when databases are connected and adapter received configuration.
   // start here!
   adapter.on ('ready', async() => {
-      adapter.log.info('Adapter is starting');
-      adapter.log.info('Adapter name is = ' + adapterName);
-
-      /*
-      // event handlers
-      shutdownSignalCount = 0;
-      uaclient.emitter.on('connection_break', async () => await gracefullShutdown('connection_break'));
-      //uaclient.emitter.on('connection_lost', handleConnectionLostEvent );
-      uaclient.emitter.on('connected', handleOpcClientConnectionEvent );
-      */
 
       // Move the ioBroker Adapter configuration to the container values 
       IP_ADDR = adapter.config.bind || "0.0.0.0";
-      // PORT = adapter.config.port || 9099;
-      // adapter.log.info('PORT = ' + PORT);
       LOG_ALL = adapter.config.extlogging;
+      LOGIN = adapter.config.loginId || 'secret_login';
+      TOKEN = adapter.config.token || 'secret_token';
 
-      //Enable receiving of change events for all objects
-      adapter.subscribeStates('*');
+      trackedClientsIP = new TrackedClientsIP();
 
-      // Create & reset connection stat at adapter start
-      // await this.create_state('info.connection', 'Connected', true);
-      adapter.getState('info.connection', (err, state) => {
-        (!state || state.val) && adapter.setState('info.connection', { val: false, ack: true });
-      });
+      try {
+        //Enable receiving of change events for all objects
+        adapter.subscribeStates('*');
 
-      // first let's remove all existing states in .variables channel, if any
-      if (LOG_ALL) adapter.log.info('Getting all Existing states now...');
-      const existingStates = await getAllExistingStates();
-
-      for (let j=0; j < existingStates.length ; j++) {
-        if (LOG_ALL) adapter.log.info('Existing state ' + existingStates[j]);
-      }
-      /*
-      if (LOG_ALL) adapter.log.info('Starting deleting of existing objects/states, if any');
-
-      for (let j=0; j < existingStates.length ; j++) {
-        if (LOG_ALL) adapter.log.info('Existing state ' + existingStates[j] + " will be deleted");
-        await adapter.delObject(existingStates[j], function (err) {
-          if (err) adapter.log.error('Cannot delete object: ' + err);
+        // Create & reset connection stat at adapter start
+        adapter.getState('info.connection', (err, state) => {
+          (!state || state.val) && adapter.setState('info.connection', { val: false, ack: true });
         });
-      }
 
-      if (LOG_ALL) adapter.log.info('The Removal of existing states is finished!');
+        const existingStates = await getAllExistingStates();
+        for (let j=0; j < existingStates.length ; j++) {
+          try {
+            await adapter.deleteObjectAsync(existingStates[j], function (err) {
+              if (err) adapter.log.error('Cannot delete object: ' + err);
+            });
+          } catch (e) {
+            // ignore
+          }
+        }
 
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      */
+        adapter.setObjectNotExists(adapter.namespace + '.variables', {
+          type: 'channel',
+          common: {
+            name: 'ServerAuxVars',
+          },
+          native: {},
+        });
 
+        adapter.setObjectNotExists(adapter.namespace + ".variables" + ".clients_IP_addr", {
+          type: "state",
+          common: {
+            name: "Connected Clients IP",
+            role: "json",
+            type: "string",
+            read: true,
+            write: false,
+            desc: "Connected Clients IP addresses",
+            def: ""
+          },
+          native: {},
+        });
+        adapter.setState(adapter.namespace + '.variables.clients_IP_addr', { val: trackedClientsIP.showIpAddresses(), ack: true });
+
+        adapter.setObjectNotExists(adapter.namespace + ".variables" + ".heartBeat", {
+          type: "state",
+          common: {
+            name: "heartBeat",
+            role: "control.states",
+            type: "boolean",
+            read: true,
+            write: true,
+            desc: "heart beat signal",
+            def: false
+          },
+          native: {},
+        });
+
+        let heartBeatSignal = false;
+        const hbInterval = setInterval(()=> {
+          heartBeatSignal = !heartBeatSignal;
+          adapter.setState(adapter.namespace + '.variables.heartBeat', { val: heartBeatSignal, ack: true });
+        }, HEARTBEAT_INTERVAL);
+
+        appIntervals.push(hbInterval);
+
+        adapter.setObjectNotExists(adapter.namespace + ".info" + ".wsClientsNum", {
+          type: "state",
+          common: {
+            name: "wsClientsNum",
+            role: "websocket.updates",
+            type: "number",
+            read: true,
+            write: true,
+            desc: "List of websocket clients",
+            def: 0
+          },
+          native: {},
+        });
+
+        adapter.setState('info.wsClientsNum', { val: 0, ack: true });
+
+      } catch(err) {
+        adapter.log.error('Error catched !!!');
+        adapter.log.error(err);
+        process.exit(1);
+      } // end of try - catch block
+
+      // call main() function
       main();
 
   }); // end of adapter.on('ready')
@@ -102,19 +184,23 @@ function startAdapter(options) {
   // is called when adapter shuts down - callback has to be called under any circumstances!
   adapter.on ('unload', (callback) => {
     try {
+      adapter.log.info(`terminating uWebSockets server on port ${webServer._port}`);
+      webServer.unsubscribeAll();
+      webServer.close();
+
+      for (let i = 0; i < appIntervals.length; i++) {
+        if ( appIntervals[i] !== null ) {
+          clearInterval(appIntervals[i]);
+        }
+      }
+      appIntervals = [];
+
+      trackedClientsIP.clear();
+
       adapter.setState('info.connection', { val: false, ack: true });
-      // adapter.getState('info.connection', (err, state) => {
-      //   (!state || state.val) && (state.val !== false) && adapter.setState('info.connection', { val: false, ack: true });
-      // });
       adapter.log.info('cleaned everything up...');
-      // if ( typeof(callback) === 'function' ) {
-      //   callback();
-      // }
       callback();
     } catch (e) {
-      // if ( typeof(callback) === 'function' ) {
-      //   callback();
-      // }
       callback();
     }
   });
@@ -125,7 +211,9 @@ function startAdapter(options) {
     if (!state) {
       return ;
     }
-    if (LOG_ALL) adapter.log.info('The state ' + id + ' has been changed');
+    if (webServer) {
+      webServer.publishAll('stateChange', id, state);
+    }
   });
 
   //*********************************** Message was sent to Adapter ******************************************	
@@ -150,51 +238,72 @@ async function main() {
   adapter.config.port = parseInt(adapter.config.port, 10) || 0;
   adapter.log.info('port = ' + adapter.config.port);
 
-  // let configPromises = [];
-
-  // configPromises.push(new Promise(resolve => {
-  //   adapter.getPort(adapter.config.port, (port)=> {
-  //     if (parseInt(port, 10) !== adapter.config.port && !adapter.config.findNextPort) {
-  //         adapter.log.error(`port ${adapter.config.port} already in use`);
-  //         return adapter.terminate ? adapter.terminate(utils.EXIT_CODES.ADAPTER_REQUESTED_TERMINATION) : process.exit(utils.EXIT_CODES.ADAPTER_REQUESTED_TERMINATION);
-  //     }
-
-  //     adapter.config.port = port;
-  //     adapter.log.info('port = ' + adapter.config.port);
-  //   });
-
-  //   resolve();
-  // }));
-  
   adapter.config.port = await checkPortNumber();
 
   if (adapter.config.port) {
-    adapter.log.info('after promisses resovled');
-    // Promise.all(configPromises).then(res => {
-    //   adapter.log.info('after promisses resovled');
-    //   webServer = new ioWebSocket(adapter, adapter.config.port, LOG_ALL, { 
-    //     login: LOGIN,
-    //     token: TOKEN
-    //   });
 
-      webServer = new ioWebSocket(adapter, adapter.config.port, LOG_ALL, { 
+      webServer = new IOWebSocketSrv(adapter, adapter.config.port, LOG_ALL, { 
         login: LOGIN,
         token: TOKEN
       });
 
       // event listeners goes here
-      // webServer.initIOServer(); // NIKAKO NE OVDE. Idu prvo event listeners
-      adapter.log.info('[main] befor event listener');
       webServer.on('connected', (response) => {
-        adapter.log.info('[main] recieved connected event ' + response);
         adapter.getState('info.connection', (err, state) => {
-          adapter.log.info('response = ' + response);
           adapter.setState('info.connection', { val: response, ack: true });
         });
       });
 
+      webServer.on('new_socket', (socket) => {
+        const numOfSockets = webServer.SOCKETS.getSocketCount();
+        webServer.checkSocketsStatus();
+        adapter.getState('info.wsClientsNum', (err, state) => {
+          (!err) && (state !== undefined) && adapter.setState('info.wsClientsNum', { val: numOfSockets, ack: true });
+        });
+        trackedClientsIP.addClient(socket.getClientIP());
+        adapter.setState(adapter.namespace + '.variables.clients_IP_addr', { val: trackedClientsIP.showIpAddresses(), ack: true });
+      });
+
+      webServer.on('socket_closed', (socket) => {
+        if (LOG_ALL) adapter.log.info(`[main] Socket ${socket._ws.username} is closed`);
+        const numOfSockets = webServer.SOCKETS.getSocketCount();
+        const IP = socket.getClientIP();
+        trackedClientsIP.removeClient(IP);
+
+        adapter.getState('info.wsClientsNum', (err, state) => {
+          (!err) && (state !== undefined) && adapter.setState('info.wsClientsNum', { val: numOfSockets, ack: true });
+        });
+        adapter.setState(adapter.namespace + '.variables.clients_IP_addr', { val: trackedClientsIP.showIpAddresses(), ack: true });
+      });
+
+      webServer.on('message', (data) => {
+        // adapter.log.info(`[main] recieved new message via websocket protocol from ${data.username} : ${JSON.stringify(data.msg)}`);
+        // do something
+      });
+
+      webServer.on('foreignSubscribe', (id) => {
+        // call showStateSubscribers() method of webServer object
+        // webServer.showStateSubscribers();
+      });
+
+      webServer.on('foreignUnsubscribe', (id) => {
+        // call showStateSubscribers() method of webServer object
+        // webServer.showStateSubscribers();
+      });
+
       // uWebSocket server initialization
       webServer.initIOServer();
+
+      // check for deprected adapter subscribtions
+      const checkDeprectedSubsInterval = setInterval(()=> {
+        if ( webServer.SOCKETS.getSocketCount() === 0 ) { // there is no any websocket connected to the server
+          setTimeout(() => {
+            adapter.unsubscribeForeignStates('*');
+          }, 100);
+        }
+      }, DEL_DEPRECTED_SUBS_INTERVAL_SEC * 1000);
+
+      appIntervals.push(checkDeprectedSubsInterval);
 
   } else {
     adapter.log.error('port missing');
@@ -203,47 +312,7 @@ async function main() {
 }
 
 
-// OPC-UA CLIENT SUCCESSFUL CONNECTED
-function handleOpcClientConnectionEvent() {
-  adapter.log.info ('info from MAIN: OPC-UA Client established connection with OPC-UA Server');
-  IS_ONLINE = true;
-  adapter.setState('info.connection', { val: true, ack: true });
-}
-
-function handleConnectionLostEvent() {
-  adapter.log.info('info from MAIN: OPC UA connection closed');
-  IS_ONLINE = false;
-  adapter.setState('info.connection', { val: false, ack: true });
-}
-
-
 //************************************* Other support/helper functions *************************************************
-// helper function to get all exisiting states in .variables channel, if any
-// returns a promise
-function getAllExistingStates () {
-  return new Promise( (resolve, reject) => {
-    let arr = [];
-    adapter.getStates(adapter.namespace + '.variables.*', function (err, states) {
-
-      if (err) {
-        adapter.log.err(' Did not find existing states, error =' + err);
-        return reject(err);
-      }
-
-      for (let id in states) {
-        //const helperArr = id.split(".").slice(0, 2);
-        //helperArr.slice(0, 2);
-        let _id = constructId(id);
-        //adapter.log.info(_id);
-        if (_id !== undefined) {
-          arr.push(_id);
-        }
-      }
-      resolve(arr);
-    });
-  });
-}
-
 // helper function to check port number
 // returns a promise
 function checkPortNumber () {
@@ -259,7 +328,35 @@ function checkPortNumber () {
   });
 };
 
-// helper function to make Id without adapter.namespace
+// helper function to get all exisiting states in .variables channel, if any
+// returns a promise
+function getAllExistingStates () {
+  return new Promise( (resolve, reject) => {
+    let arr = [];
+    // adapter.getStates(adapter.namespace + '.*', function (err, states) {
+    adapter.getStates(adapter.namespace + '.variables.*', function (err, states) {
+      
+      if (err) {
+        adapter.log.err(' Did not find existing states, error =' + err);
+        return reject(err);
+      }
+
+      // Object.entries(states).forEach(state => { 
+      //   adapter.log.info(`   ${state}`) 
+      // });
+
+      for (let id in states) {
+        let _id = constructId(id);
+        if (_id !== undefined) {
+          arr.push(_id);
+        }
+      }
+      resolve(arr);
+    });
+  });
+}
+
+// helper function to make Id without adapter.namespace prefix
 function constructId(str) {
   let shortId;
   let auxArray = [];
@@ -270,76 +367,6 @@ function constructId(str) {
   shortId = splicedArr.join('.');
 
   return shortId;
-}
-
-// helper functions to handle Sub-folder name
-function handleFolderName (rawData) {
-  if ( !rawData || rawData === "") {
-    const valueToReturn = "";
-    return valueToReturn;
-  }
-
-  let fixedName = "";
-
-  let name = rawData.replace(/\//g, ".").replace(/\\/g, ".");
-  if ( name.charAt(name.length - 1) === ".") {
-    // remove last element of the string
-    fixedName = name.slice(0, -1);
-  } else {
-    fixedName = name;
-  }
-
-  return fixedName;
-}
-
-// helper function to test if endpoint URL is valid or not
-function urlIsInvalid(url) {
-//  if (/\s/.test(url)) {
-//    // It has any kind of whitespace
-//  }
-  const patt = new RegExp(/\s/);
-  const res = patt.test(url);
-
-  return res;
-}
-
-// helper functions to handle opcua Node name
-function handleOpcuaNodeName (rawData) {
-  let name = rawData.replace(/\//g, "_").replace(/\./g, "_").replace(/\;/g, "_").replace(/\:/g, "_");
-
-  return name;
-}
-
-// helper function to handle config file directory
-function handleConfigFileDir (configFilePath) {
-  if (configFilePath.startsWith('/')) {
-      return configFilePath;
-  } else {
-      return '/' + configFilePath;
-  }
-}
-
-// helper functions to find opcua tag in opcua Tag Liste
-function findNodeInTagList(nodeId, _opcUaTagList) {
-  return _opcUaTagList.find(tag => tag.nodeId === nodeId);
-}
-
-// helper functions to detect index of opcua Node in opcua Tag Liste
-function detectIndex(nodeId, _opcUaTagList) {
-  return _opcUaTagList.findIndex(item => item.nodeId === nodeId);
-}
-
-// helper function that returns last element of the array
-function last(array) {
-  return array[array.length - 1];
-}
-
-// helper function for terminating OPC UA subscription
-const clearOpc = (subscription) => {
-  if (LOG_ALL) adapter.log.info(" clear OPC");
-  if (subscription) {
-    uaclient.terminateOpcSubscription(subscription);
-  }
 }
 
 /*

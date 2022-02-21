@@ -1,5 +1,7 @@
 .git
 .idea
+.vscode/
+.vscode
 tmp
 node_modules/
 .node_modules/

@@ -34,14 +34,16 @@
     "icon": "uws.png",
     "enabled": true,
     "messagebox": true,
-    "extIcon": "https://github.com/proarsing/ioBroker.uws/admin/uws.png",
-    "readme": "https://github.com/proarsing/ioBroker.uws/README.md",
+    "extIcon": "https://raw.githubusercontent.com/proarsing/ioBroker.uws/main/uws.png",
+    "readme": "https://github.com/proarsing/ioBroker.uws/blob/main/README.md",
     "loglevel": "info",
     "mode": "daemon",
     "type": "communication",
+    "stopBeforeUpdate": true,
     "compact": true,
+    "connectionType": "local",
+    "dataSource": "push",
     "materialize": true,
-    "materializeTab": true,
     "adminTab": {
       "singleton": true,
       "name": {
@@ -56,16 +58,21 @@
       {
         "js-controller": ">=2.0.0"
       }
-    ],
-    "installedFrom": "/home/vlada/Development/iobroker/adapter_development/ioBroker.uws"
+    ]
   },
   "native": {
     "port": 9099,
     "auth": false,
     "secure": false,
     "bind": "0.0.0.0",
+    "loginId": "secret_login",
+    "token": "",
     "extlogging": "false"
   },
+  "protectedNative": [
+    "token",
+    "loginId"
+  ],
   "objects": [],
   "instanceObjects": [
     {
