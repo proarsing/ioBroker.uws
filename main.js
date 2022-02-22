@@ -271,6 +271,8 @@ async function main() {
           (!err) && (state !== undefined) && adapter.setState('info.wsClientsNum', { val: numOfSockets, ack: true });
         });
         adapter.setState(adapter.namespace + '.variables.clients_IP_addr', { val: trackedClientsIP.showIpAddresses(), ack: true });
+
+        if (LOG_ALL) webServer.checkSocketsStatus();
       });
 
       webServer.on('message', (data) => {
