@@ -7,11 +7,9 @@ uWebSockets server is very fast. It comes with both router and pub/sub support a
 
 ## Installation
 Please use the "adapter list" in ioBroker to install a stable version of this adapter. You can also use the CLI to install this adapter:
-
-    ```
+    ```bash
     iobroker add uws
     ```
-
 ## Developer manual
 This section is intended for the developer. It can be deleted later
 
