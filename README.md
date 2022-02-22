@@ -1,4 +1,4 @@
-![Logo](admin/uws.png)
+![Logo](./uws.png)
 # ioBroker uWebSockets server Adapter
 
 ## Description
